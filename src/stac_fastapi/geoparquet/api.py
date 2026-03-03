@@ -72,7 +72,7 @@ def create(
     duckdb_client: DuckdbClient | None = None,
 ) -> StacApi:
     if duckdb_client is None:
-        duckdb_client = DuckdbClient()
+        duckdb_client = DuckdbClient(use_s3_credential_chain=True)
     if settings is None:
         settings = Settings(
             stac_fastapi_landing_id="stac-fastapi-geoparquet",
