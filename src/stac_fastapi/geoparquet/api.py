@@ -72,7 +72,9 @@ def create(
     duckdb_client: DuckdbClient | None = None,
 ) -> StacApi:
     if duckdb_client is None:
-        duckdb_client = DuckdbClient(use_s3_credential_chain=True)
+        duckdb_client = DuckdbClient()
+        duckdb_client.execute("CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN)")
+        duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
         settings = Settings(
             stac_fastapi_landing_id="stac-fastapi-geoparquet",
