@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -73,7 +74,11 @@ def create(
 ) -> StacApi:
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
-        duckdb_client.execute("CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN)")
+        s3end = os.getenv("AWS_S3_ENDPOINT")
+        if s3end:
+            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, ENDPOINT '{s3end}');")
+        else:
+            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN);")
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
         settings = Settings(
