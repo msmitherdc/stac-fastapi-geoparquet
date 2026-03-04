@@ -120,6 +120,7 @@ def create(
             settings=settings,
             collections=collections,
             duckdb_client=duckdb_client,
+            redirect_slashes=False,
         ),
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
