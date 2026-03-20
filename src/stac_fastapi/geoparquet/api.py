@@ -76,9 +76,9 @@ def create(
         duckdb_client = DuckdbClient()
         s3end = os.getenv("AWS_S3_ENDPOINT")
         if s3end:
-            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, ENDPOINT '{s3end}');")
+            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
         else:
-            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN);")
+            duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
         settings = Settings(
