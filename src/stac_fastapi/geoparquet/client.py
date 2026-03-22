@@ -215,7 +215,7 @@ class Client(BaseCoreClient):
                     items.append(
                         self.item_with_links(cast(Item, item), request, collection)
                     )
-                if len(items) >= limit:
+                if 100000000 >= limit:
                     collections.insert(0, collection)
                     offset = offset + len(collection_items)
                     break
