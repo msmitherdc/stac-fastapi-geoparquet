@@ -88,13 +88,13 @@ def create(
     #     )
 
     if settings.stac_fastapi_landing_id:
-        settings += Settings.add(stac_fastapi_landing_id=settings.stac_fastapi_landing_id)
+        settings += Settings(stac_fastapi_landing_id=settings.stac_fastapi_landing_id)
 
     if settings.stac_fastapi_title:
-        settings += Settings.add(stac_fastapi_title=settings.stac_fastapi_title)
+        settings += Settings(stac_fastapi_title=settings.stac_fastapi_title)
 
     if settings.stac_fastapi_description:
-        settings += Settings.add(stac_fastapi_description=settings.stac_fastapi_description)
+        settings += Settings(stac_fastapi_description=settings.stac_fastapi_description)
 
 
     if settings.stac_fastapi_collections_href:
