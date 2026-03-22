@@ -81,11 +81,21 @@ def create(
             duckdb_client.execute(f"CREATE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
-        settings = Settings(
-            stac_fastapi_landing_id="stac-fastapi-geoparquet",
-            stac_fastapi_title="stac-fastapi-geoparquet",
-            stac_fastapi_description="A stac-fastapi server backend by stac-geoparquet",
-        )
+         settings = Settings()
+    #         stac_fastapi_landing_id="stac-fastapi-geoparquet",
+    #         stac_fastapi_title="stac-fastapi-geoparquet",
+    #         stac_fastapi_description="A stac-fastapi server backend by stac-geoparquet",
+    #     )
+
+    if settings.stac_fastapi_landing_id:
+        settings += Settings.add(stac_fastapi_landing_id=settings.stac_fastapi_landing_id)
+
+    if settings.stac_fastapi_title:
+        settings += Settings.add(stac_fastapi_title=settings.stac_fastapi_title)
+
+    if settings.stac_fastapi_description:
+        settings += Settings.add(stac_fastapi_description=settings.stac_fastapi_description)
+
 
     if settings.stac_fastapi_collections_href:
         if urllib.parse.urlparse(settings.stac_fastapi_collections_href).scheme:
