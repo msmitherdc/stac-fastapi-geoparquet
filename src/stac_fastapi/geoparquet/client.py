@@ -125,7 +125,7 @@ class Client(BaseCoreClient):
             bbox=bbox,
             datetime=datetime,
             limit=limit,
-            offset=offset,
+            offset=limit+offset,
         )
         return self.search(
             request=request,
