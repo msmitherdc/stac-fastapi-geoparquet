@@ -119,7 +119,7 @@ class Client(BaseCoreClient):
         **kwargs: Any,
     ) -> ItemCollection:
         request = kwargs.pop("request")
-        offset = kwargs.pop("offset", None)
+        offset = kwargs.pop("offset", 0)
         search = PostSearchRequestModel(
             collections=[collection_id],
             bbox=bbox,
