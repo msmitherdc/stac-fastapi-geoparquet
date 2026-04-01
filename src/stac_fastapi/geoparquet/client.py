@@ -1,3 +1,4 @@
+import ast
 import copy
 import json
 import urllib.parse
@@ -23,7 +24,12 @@ class Client(BaseCoreClient):
 
     def all_collections(self, **kwargs: Any) -> Collections:
         request = kwargs.pop("request")
+        # grid specific filtering based on access tags
+        atl = dict(request.headers)['x-grid-accesstags']
+        atl = ast.literal_eval(atl)
         collections = cast(dict[str, Collection], request.state.collections)
+        collections = {cname: coll for cname, coll in collections.items() if collections[cname]['access_tag_id'] in atl }
+        # now collections are filtered
         return Collections(
             collections=[
                 collection_with_links(c, request) for c in collections.values()
