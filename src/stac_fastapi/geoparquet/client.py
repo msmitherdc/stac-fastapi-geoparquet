@@ -205,7 +205,7 @@ class Client(BaseCoreClient):
         atl = dict(request.headers)['x-grid-accesstags']
         atl = ast.literal_eval(atl)
         # add in AT List filtering
-        search_dict["filter"] + {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+        search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
         ### end grid add
         
         limit = search_dict.get("limit", DEFAULT_LIMIT)
