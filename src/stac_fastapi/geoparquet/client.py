@@ -200,6 +200,16 @@ class Client(BaseCoreClient):
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
 
+        # fetch the access tags from the request
+        atl = dict(request.headers)['x-grid-accesstags']
+        atl = ast.literal_eval(atl)
+        # add in AT List filtering
+        if not filter_expr:
+            search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+        else:
+            search_dict["filter"] = search_dict["filter"] + {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+        ### end grid add
+        
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
         items: list[Item] = []
