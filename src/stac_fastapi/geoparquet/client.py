@@ -125,7 +125,8 @@ class Client(BaseCoreClient):
         **kwargs: Any,
     ) -> ItemCollection:
         request = kwargs.pop("request")
-        offset = kwargs.pop("offset", None)
+        qp = dict(request.query_params)
+        offset = qp.pop("offset", None)
         search = PostSearchRequestModel(
             collections=[collection_id],
             bbox=bbox,
@@ -204,10 +205,7 @@ class Client(BaseCoreClient):
         atl = dict(request.headers)['x-grid-accesstags']
         atl = ast.literal_eval(atl)
         # add in AT List filtering
-        if not filter_expr:
-            search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
-        else:
-            search_dict["filter"] = search_dict["filter"] + {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+        search_dict["filter"] + {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
         ### end grid add
         
         limit = search_dict.get("limit", DEFAULT_LIMIT)
@@ -243,6 +241,7 @@ class Client(BaseCoreClient):
 
         if collections and ((search.limit or DEFAULT_LIMIT) <= num_items):
             next_search = copy.deepcopy(search_dict)
+            next_search.pop('filter', None)
             next_search["limit"] = search.limit or DEFAULT_LIMIT
             next_search["offset"] = offset
             next_search["collections"] = collections
