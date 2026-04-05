@@ -125,8 +125,9 @@ class Client(BaseCoreClient):
         **kwargs: Any,
     ) -> ItemCollection:
         request = kwargs.pop("request")
-        qp = dict(request.query_params)
-        offset = qp.pop("offset", None)
+        offset = kwargs.pop("offset", None)
+        # qp = dict(request.query_params)
+        # offset = qp.pop("offset", None)
         search = PostSearchRequestModel(
             collections=[collection_id],
             bbox=bbox,
