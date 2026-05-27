@@ -147,13 +147,12 @@ def create(
         items_get_request_model=ItemsGetRequestModel,
     )
     # Temp debug block to print routes on startup
-    @api.app.on_event("startup")
-    async def list_routes():
-        print("\n=== MOUNTED API ROUTES ===")
-        for route in api.app.routes:
-            methods = getattr(route, "methods", None)
-            print(f"Path: {route.path} | Name: {route.name} | Methods: {methods}")
-        print("==========================\n")
+    # Synchronously inspect and print the mounted routes
+    print("\n=== MOUNTED API ROUTES ===")
+    for route in api.app.routes:
+        methods = getattr(route, "methods", None)
+        print(f"Path: {getattr(route, 'path', 'N/A')} | Name: {getattr(route, 'name', 'N/A')} | Methods: {methods}")
+    print("==========================\n")
 
     return api
 
