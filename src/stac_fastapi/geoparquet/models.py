@@ -1,6 +1,6 @@
 import stac_fastapi.api.models
 from stac_fastapi.api.models import ItemCollectionUri
-from stac_fastapi.extensions.core import FilterExtension
+from stac_fastapi.extensions.core.filter import SearchFilterExtension
 from stac_fastapi.extensions.core.fields import FieldsExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 from stac_fastapi.extensions.core.sort import SortExtension
@@ -10,7 +10,7 @@ from .search import FixedSearchGetRequest
 
 EXTENSIONS = [
     OffsetPaginationExtension(),
-    FilterExtension(),
+    SearchFilterExtension(),
     FieldsExtension(),
     SortExtension(),
 ]

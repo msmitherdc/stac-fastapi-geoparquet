@@ -8,8 +8,6 @@ from typing import Any, cast, Optional
 from fastapi import HTTPException
 from pydantic import ValidationError
 from rustac import DuckdbClient
-from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient, BaseFiltersClient
-from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
@@ -381,56 +379,64 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
             "rel": "items",
             "type": "application/geo+json",
         },
+        {
+            "href": str(
+                request.url_for("Get Queryable", collection_id=collection["id"])),
+            "rel": "items",
+            "type": "application/json",
+            "title": "Queryables", 
+        }
     ]
+    
     return collection
 
-async def get_queryables(self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+def get_queryables(self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
 
-        client = cast(DuckdbClient, request.state.client)
-        hrefs = cast(dict[str, str], request.state.hrefs)
+    client = cast(DuckdbClient, request.state.client)
+    hrefs = cast(dict[str, str], request.state.hrefs)
 
-        if not collection_id:
-            # we require a collection_id as the schema can vary
-            raise HTTPException(
-                status_code=400,
-                detail="A collection_id is required to access /queryables.",
-            )
+    if not collection_id:
+        # we require a collection_id as the schema can vary
+        raise HTTPException(
+            statu   s_code=400,
+            detail="A collection_id is required to access /queryables.",
+        )
 
-        parquet_path = hrefs.get(collection_id)
-        if not parquet_path:
-            raise NotFoundError(f"Collection '{collection_id}' not found.")
+    parquet_path = hrefs.get(collection_id)
+    if not parquet_path:
+        raise NotFoundError(f"Collection '{collection_id}' not found.")
 
-        try:
-            # Use DuckDB to describe the schema of the Parquet file
-            query = f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}');"
-            schema_info = client.execute(query).fetchall()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not read schema for collection '{collection_id}': {e}",
-            )
+    try:
+        # Use DuckDB to describe the schema of the Parquet file
+        query = f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}');"
+        schema_info = client.execute(query).fetchall()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not read schema for collection '{collection_id}': {e}",
+        )
 
-        properties = {}
-        for row in schema_info:
-            column_name, duckdb_type = row[0], row[1]
-            properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
+    properties = {}
+    for row in schema_info:
+        column_name, duckdb_type = row[0], row[1]
+        properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
 
-        base_url = str(request.base_url).rstrip("/")
-        if collection_id:
-            schema_id = f"{base_url}/collections/{collection_id}/queryables"
-            title = f"Queryables for {collection_id}"
-        else:
-            schema_id = f"{base_url}/queryables"
-            title = "Root Queryables"
-            
-        return {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": schema_id,
-            "type": "object",
-            "title": title,
-            "properties": properties,
-            "additionalProperties": False
-        }
+    base_url = str(request.base_url).rstrip("/")
+    if collection_id:
+        schema_id = f"{base_url}/collections/{collection_id}/queryables"
+        title = f"Queryables for {collection_id}"
+    else:
+        schema_id = f"{base_url}/queryables"
+        title = "Root Queryables"
+        
+    return {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "$id": schema_id,
+        "type": "object",
+        "title": title,
+        "properties": properties,
+        "additionalProperties": False
+    }
 
 def _duckdb_type_to_json_schema(self, duckdb_type: str) -> dict[str, str]:
     """convert DuckDB data types to JSON schema types."""
