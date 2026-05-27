@@ -398,7 +398,7 @@ def get_queryables(self, request: Request, collection_id: Optional[str] = None, 
     if not collection_id:
         # we require a collection_id as the schema can vary
         raise HTTPException(
-            statu   s_code=400,
+            status_code=400,
             detail="A collection_id is required to access /queryables.",
         )
 
