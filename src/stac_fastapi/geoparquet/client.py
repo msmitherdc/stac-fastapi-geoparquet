@@ -3,7 +3,7 @@ import copy
 import json
 import os
 import urllib.parse
-from typing import Any, cast
+from typing import Any, cast, Optional
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -382,3 +382,91 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
         },
     ]
     return collection
+
+async def get_queryables(
+        self, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+        """Get the queryables for a specific collection."""
+        request: Request = kwargs["request"]
+        client = cast(DuckdbClient, request.state.client)
+        hrefs = cast(dict[str, str], request.state.hrefs)
+
+        if not collection_id:
+            # we require a collection_id as the schema can vary
+            raise HTTPException(
+                status_code=400,
+                detail="A collection_id is required to access /queryables.",
+            )
+
+        parquet_path = hrefs.get(collection_id)
+        if not parquet_path:
+            raise NotFoundError(f"Collection '{collection_id}' not found.")
+
+        try:
+            # Use DuckDB to describe the schema of the Parquet file
+            query = f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}');"
+            schema_info = client.execute(query).fetchall()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not read schema for collection '{collection_id}': {e}",
+            )
+
+        properties = {}
+        for row in schema_info:
+            column_name, duckdb_type = row[0], row[1]
+            properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
+
+        return {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "$id": str(
+                request.url_for(
+                    "Get Queryables",
+                    collection_id=collection_id,
+                )
+            ),
+            "type": "object",
+            "title": f"Queryables for {collection_id}",
+            "properties": properties,
+        }
+
+def _duckdb_type_to_json_schema(self, duckdb_type: str) -> dict[str, str]:
+    """convert DuckDB data types to JSON schema types."""
+    duckdb_type = duckdb_type.upper()
+    if duckdb_type in ("BIGINT", "HUGEINT", "INTEGER", "SMALLINT", "TINYINT", "UBIGINT",
+                       "UINTEGER", "USMALLINT", "UTINYINT"):
+        return {"type": "integer"}
+    elif duckdb_type in ("DECIMAL", "DOUBLE", "FLOAT", "REAL"):
+        return {"type": "number"}
+    elif duckdb_type == "BOOLEAN":
+        return {"type": "boolean"}
+    elif duckdb_type in ("DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMPTZ"):
+        return {"type": "string", "format": "date-time"}
+    elif duckdb_type in ("VARCHAR", "TEXT", "STRING"):
+        return {"type": "string"}
+    elif duckdb_type == "GEOMETRY":
+            # Return a valid GeoJSON Geometry object schema definition
+            return {
+                "type": "object",
+                "title": "GeoJSON Geometry",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "Point",
+                            "MultiPoint",
+                            "LineString",
+                            "MultiLineString",
+                            "Polygon",
+                            "MultiPolygon",
+                            "GeometryCollection"
+                        ]
+                    },
+                    "coordinates": {
+                        "type": "array"
+                    }
+                },
+                "required": ["type", "coordinates"]
+            }
+    else:
+            # Fallback for other unmapped complex database types
+            return {"type": "object"}
