@@ -18,10 +18,9 @@ from stac_fastapi.extensions.core import (
     FieldsExtension,
     SortExtension,
 )
+# Add this import at the top of api.py
+from .models import GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
-from stac_fastapi.api.app import StacApi
-from starlette.requests import Request
-
 from .settings import Settings
 
 GEOPARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
