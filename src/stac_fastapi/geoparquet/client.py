@@ -384,8 +384,7 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
     ]
     return collection
 
-async def get_queryables(self, request: Request, collection_id: Optional[str] = None,
-                         **kwargs: Any) -> dict[str, Any]:
+async def get_queryables(self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
 
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
@@ -416,16 +415,25 @@ async def get_queryables(self, request: Request, collection_id: Optional[str] = 
             column_name, duckdb_type = row[0], row[1]
             properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
 
-        base_url = str(request.base_url).rstrip("/")
         if collection_id:
-            queryables_url = f"{base_url}/collections/{collection_id}/queryables"
+            route_name = "Get Collection Queryables"
+            params = {"collection_id": collection_id}
             title = f"Queryables for {collection_id}"
         else:
-            queryables_url = f"{base_url}/queryables"
+            route_name = "Get Queryables"
+            params = {}
             title = "Root Queryables"
+            
+        try:
+            schema_id = str(request.url_for(route_name, **params))
+        except Exception:
+            # Fallback if URL resolution fails during background processing
+            base_url = str(request.base_url).rstrip("/")
+            schema_id = f"{base_url}/collections/{collection_id}/queryables" if collection_id else f"{base_url}/queryables"
+            
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": queryables_url,
+            "$id": schema_id,
             "type": "object",
             "title": title,
             "properties": properties,

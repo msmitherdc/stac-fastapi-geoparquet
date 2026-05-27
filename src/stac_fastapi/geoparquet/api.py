@@ -13,11 +13,14 @@ from rustac import DuckdbClient
 from stac_fastapi.api.app import StacApi
 
 from .client import Client
-from .models import GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
-# Also import the extensions directly in this file
-# Make sure you import FilterExtension
-from stac_fastapi.extensions.core import FilterExtension, FieldsExtension, SortExtension
+from stac_fastapi.extensions.core import (
+    FilterExtension,
+    FieldsExtension,
+    SortExtension,
+)
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
+from stac_fastapi.api.app import StacApi
+from starlette.requests import Request
 
 from .settings import Settings
 
@@ -121,6 +124,7 @@ def create(
 
     core_client = Client()
     filter_ext = FilterExtension(client=core_client)
+    
     api = StacApi(
         settings=settings,
         client=Client(),
@@ -145,11 +149,19 @@ def create(
         ],
     )
     
-    try:
-        filter_ext.register(api.app)
-    except Exception as e:
-        print(f"Warning: Manual extension registration failed (it may have auto-registered): {e}")
-
+    api.app.add_api_route(
+        name="Get Queryables",
+        path="/queryables",
+        methods=["GET"],
+        endpoint=core_client.get_queryables,
+    )
+    api.app.add_api_route(
+        name="Get Collection Queryables",
+        path="/collections/{collection_id}/queryables",
+        methods=["GET"],
+        endpoint=core_client.get_queryables,
+    )
+    
     # Temp debug block to print routes on startup
     # Synchronously inspect and print the mounted routes
     print("\n=== MOUNTED API ROUTES ===")
