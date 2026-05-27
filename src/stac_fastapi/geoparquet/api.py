@@ -147,27 +147,6 @@ def create(
             SortExtension(),
         ],
     )
-    
-    api.app.add_api_route(
-        name="Get Queryables",
-        path="/queryables",
-        methods=["GET"],
-        endpoint=core_client.get_queryables,
-    )
-    api.app.add_api_route(
-        name="Get Collection Queryables",
-        path="/collections/{collection_id}/queryables",
-        methods=["GET"],
-        endpoint=core_client.get_queryables,
-    )
-    
-    # Temp debug block to print routes on startup
-    # Synchronously inspect and print the mounted routes
-    print("\n=== MOUNTED API ROUTES ===")
-    for route in api.app.routes:
-        methods = getattr(route, "methods", None)
-        print(f"Path: {getattr(route, 'path', 'N/A')} | Name: {getattr(route, 'name', 'N/A')} | Methods: {methods}")
-    print("==========================\n")
 
     return api
 

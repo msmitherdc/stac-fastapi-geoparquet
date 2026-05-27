@@ -415,21 +415,13 @@ async def get_queryables(self, request: Request, collection_id: Optional[str] = 
             column_name, duckdb_type = row[0], row[1]
             properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
 
+        base_url = str(request.base_url).rstrip("/")
         if collection_id:
-            route_name = "Get Collection Queryables"
-            params = {"collection_id": collection_id}
+            schema_id = f"{base_url}/collections/{collection_id}/queryables"
             title = f"Queryables for {collection_id}"
         else:
-            route_name = "Get Queryables"
-            params = {}
+            schema_id = f"{base_url}/queryables"
             title = "Root Queryables"
-            
-        try:
-            schema_id = str(request.url_for(route_name, **params))
-        except Exception:
-            # Fallback if URL resolution fails during background processing
-            base_url = str(request.base_url).rstrip("/")
-            schema_id = f"{base_url}/collections/{collection_id}/queryables" if collection_id else f"{base_url}/queryables"
             
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
