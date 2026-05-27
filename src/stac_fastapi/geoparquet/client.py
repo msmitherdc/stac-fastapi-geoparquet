@@ -8,6 +8,7 @@ from typing import Any, cast, Optional
 from fastapi import HTTPException
 from pydantic import ValidationError
 from rustac import DuckdbClient
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
@@ -20,7 +21,7 @@ from .models import PostSearchRequestModel
 DEFAULT_LIMIT = 10_000
 
 
-class Client(BaseCoreClient):
+class Client(BaseCoreClient, AsyncBaseFiltersClient):
     """A stac-fastapi-geoparquet client."""
 
     def all_collections(self, **kwargs: Any) -> Collections:
@@ -383,10 +384,9 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
     ]
     return collection
 
-async def get_queryables(
-        self, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
+async def get_queryables(self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
         """Get the queryables for a specific collection."""
-        request: Request = kwargs["request"]
+
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
 

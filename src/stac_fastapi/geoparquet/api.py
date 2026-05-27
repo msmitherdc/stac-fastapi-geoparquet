@@ -122,6 +122,7 @@ def create(
             )
         )
 
+    core_client = Client()
     api = StacApi(
         settings=settings,
         client=Client(),
@@ -136,7 +137,7 @@ def create(
             redirect_slashes=False,
             extensions=[
                 OffsetPaginationExtension(),
-                FilterExtension(),
+                FilterExtension(client=core_client),
                 FieldsExtension(),
                 SortExtension(),
             ],
