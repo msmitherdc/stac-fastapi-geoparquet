@@ -146,6 +146,15 @@ def create(
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
     )
+    # Temp debug block to print routes on startup
+    @api.app.on_event("startup")
+    async def list_routes():
+        print("\n=== MOUNTED API ROUTES ===")
+        for route in api.app.routes:
+            methods = getattr(route, "methods", None)
+            print(f"Path: {route.path} | Name: {route.name} | Methods: {methods}")
+        print("==========================\n")
+
     return api
 
 

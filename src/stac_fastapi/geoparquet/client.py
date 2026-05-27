@@ -8,7 +8,7 @@ from typing import Any, cast, Optional
 from fastapi import HTTPException
 from pydantic import ValidationError
 from rustac import DuckdbClient
-from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient, BaseFiltersClient
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
@@ -21,7 +21,7 @@ from .models import PostSearchRequestModel
 DEFAULT_LIMIT = 10_000
 
 
-class Client(BaseCoreClient, AsyncBaseFiltersClient):
+class Client(BaseCoreClient, AsyncBaseFiltersClient, BaseFiltersClient):
     """A stac-fastapi-geoparquet client."""
 
     def all_collections(self, **kwargs: Any) -> Collections:
