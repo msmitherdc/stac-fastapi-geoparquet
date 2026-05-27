@@ -15,11 +15,8 @@ from stac_fastapi.api.app import StacApi
 from .client import Client
 from .models import GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
 # Also import the extensions directly in this file
-from stac_fastapi.extensions.core import (
-    FilterExtension,
-    FieldsExtension,
-    SortExtension,
-)
+# Make sure you import FilterExtension
+from stac_fastapi.extensions.core import FilterExtension, FieldsExtension, SortExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 
 from .settings import Settings
@@ -123,6 +120,7 @@ def create(
         )
 
     core_client = Client()
+    filter_ext = FilterExtension(client=core_client)
     api = StacApi(
         settings=settings,
         client=Client(),
@@ -135,17 +133,23 @@ def create(
             collections=collections,
             duckdb_client=duckdb_client,
             redirect_slashes=False,
-            extensions=[
-                OffsetPaginationExtension(),
-                FilterExtension(client=core_client),
-                FieldsExtension(),
-                SortExtension(),
-            ],
         ),
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
+        extensions=[
+            OffsetPaginationExtension(),
+            filter_ext,  # <--- Use the instance we created above
+            FieldsExtension(),
+            SortExtension(),
+        ],
     )
+    
+    try:
+        filter_ext.register(api.app)
+    except Exception as e:
+        print(f"Warning: Manual extension registration failed (it may have auto-registered): {e}")
+
     # Temp debug block to print routes on startup
     # Synchronously inspect and print the mounted routes
     print("\n=== MOUNTED API ROUTES ===")
