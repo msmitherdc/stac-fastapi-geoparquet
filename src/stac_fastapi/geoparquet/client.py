@@ -384,8 +384,8 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
     ]
     return collection
 
-async def get_queryables(self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
-        """Get the queryables for a specific collection."""
+async def get_queryables(
+        self, request: Request, collection_id: Optional[str] = None, **kwargs: Any) -> dict[str, Any]:
 
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
