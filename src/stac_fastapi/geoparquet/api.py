@@ -13,7 +13,15 @@ from rustac import DuckdbClient
 from stac_fastapi.api.app import StacApi
 
 from .client import Client
-from .models import EXTENSIONS, GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
+from .models import GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
+# Also import the extensions directly in this file
+from stac_fastapi.extensions.core import (
+    FilterExtension,
+    FieldsExtension,
+    SortExtension,
+)
+from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
+
 from .settings import Settings
 
 GEOPARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
@@ -126,6 +134,12 @@ def create(
             collections=collections,
             duckdb_client=duckdb_client,
             redirect_slashes=False,
+            extensions=[
+                OffsetPaginationExtension(),
+                FilterExtension(),
+                FieldsExtension(),
+                SortExtension(),
+            ],
         ),
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
