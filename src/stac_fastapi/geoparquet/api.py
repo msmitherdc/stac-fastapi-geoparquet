@@ -130,7 +130,6 @@ def create(
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
-        extensions=EXTENSIONS,
     )
     return api
 

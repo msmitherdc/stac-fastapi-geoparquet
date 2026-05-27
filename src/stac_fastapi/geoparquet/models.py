@@ -16,11 +16,11 @@ EXTENSIONS = [
 ]
 
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
-    base_model=FixedSearchGetRequest
+    base_model=FixedSearchGetRequest, extensions=EXTENSIONS
 )
 PostSearchRequestModel = stac_fastapi.api.models.create_post_request_model(
-    base_model=BaseSearchPostRequest
+    base_model=BaseSearchPostRequest, extensions=EXTENSIONS
 )
 ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
-    base_model=ItemCollectionUri
+    base_model=ItemCollectionUri, extensions=EXTENSIONS
 )
