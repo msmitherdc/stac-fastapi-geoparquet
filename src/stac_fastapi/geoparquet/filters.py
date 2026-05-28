@@ -228,12 +228,12 @@ class FiltersClient(BaseFiltersClient):
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client = cast(DuckdbClient, request.state.client)
-        s3end = os.getenv("AWS_S3_ENDPOINT")
-        if s3end:
-            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
-        else:
-            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
-        # try:
+        # s3end = os.getenv("AWS_S3_ENDPOINT")
+        # if s3end:
+        #     client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+        # else:
+        #     client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+        # # try:
         safe_href = href.replace("'", "''")
 
         # Use query_to_table() to get the result as a pyarrow Table
