@@ -227,7 +227,7 @@ class FiltersClient(BaseFiltersClient):
         request: Request,
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
-        client: DuckdbClient = request.state.duckdb_client
+        client: DuckdbClient = request.state.client
         try:
             # The client should already have the spatial extension loaded if needed.
             rows = client.sql(
