@@ -227,7 +227,7 @@ class FiltersClient(BaseFiltersClient):
         request: Request,
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
-        client: DuckdbClient = request.state.client
+        client = cast(DuckdbClient, request.state.client)
         # try:
         safe_href = href.replace("'", "''")
 
