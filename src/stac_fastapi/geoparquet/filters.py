@@ -7,7 +7,7 @@ accurate, per-collection JSON-Schema document.
 
 from __future__ import annotations
 
-import re
+import os
 from typing import Any, cast
 
 from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
@@ -228,6 +228,11 @@ class FiltersClient(BaseFiltersClient):
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client = cast(DuckdbClient, request.state.client)
+        s3end = os.getenv("AWS_S3_ENDPOINT")
+        if s3end:
+            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+        else:
+            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
         # try:
         safe_href = href.replace("'", "''")
 
