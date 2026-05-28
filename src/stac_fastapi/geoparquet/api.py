@@ -115,11 +115,6 @@ def create(
             )
         )
 
-    # Honour UVICORN_ROOT_PATH (set by uvicorn --root-path) so that all routes
-    # and url_for() calls include the correct prefix when the app is mounted
-    # under a sub-path.  Fall back to settings.root_path for non-uvicorn use.
-    _root_path = os.getenv("UVICORN_ROOT_PATH") or settings.root_path
-
     api = StacApi(
         settings=settings,
         client=Client(),
@@ -128,13 +123,11 @@ def create(
             openapi_url=settings.openapi_url,
             docs_url=settings.docs_url,
             redoc_url=settings.docs_url,
-            root_path=_root_path,
             settings=settings,
             collections=collections,
             duckdb_client=duckdb_client,
             redirect_slashes=False,
         ),
-        router=APIRouter(prefix=_root_path),
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
