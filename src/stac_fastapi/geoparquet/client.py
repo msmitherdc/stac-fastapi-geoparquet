@@ -19,7 +19,7 @@ from .models import PostSearchRequestModel
 DEFAULT_LIMIT = 10_000
 
 
-class Client(BaseCoreClient, AsyncBaseFiltersClient, BaseFiltersClient):
+class Client(BaseCoreClient):
     """A stac-fastapi-geoparquet client."""
 
     def all_collections(self, **kwargs: Any) -> Collections:
