@@ -1,8 +1,6 @@
-"""Filter extension client for stac-fastapi-geoparquet.
-
+"""
+Filter extension client for stac-fastapi-geoparquet.
 Implements ``/queryables`` and ``/collections/{collection_id}/queryables``
-by introspecting the DuckDB/geoparquet schema so callers always receive an
-accurate, per-collection JSON-Schema document.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ from starlette.requests import Request
 from rustac import DuckdbClient
 
 # ---------------------------------------------------------------------------
-# DuckDB type → JSON-Schema type mapping
+# DuckDB type → JSON-Schema type mapping (AI written)
 # ---------------------------------------------------------------------------
 
 _DUCKDB_TO_JSONSCHEMA: dict[str, dict[str, str]] = {
@@ -163,17 +161,9 @@ def _extract_queryable_properties(
 
 
 class FiltersClient(BaseFiltersClient):
-    """Concrete filter client backed by DuckDB/geoparquet schema introspection.
+    """filter client using rustac
 
-    For a specific ``collection_id`` the client:
-
-    1. Resolves the geoparquet href from application state.
-    2. Runs ``DESCRIBE SELECT * FROM '<href>' LIMIT 0`` inside DuckDB to
-       retrieve column names and types without reading data.
-    3. Maps DuckDB types to JSON-Schema types and returns a conformant
-       Queryables document.
-
-    When ``collection_id`` is *None* (i.e. the global ``/queryables``
+    When `collection_id` is *None* (i.e. the global ``/queryables``
     endpoint) returns static common queryables
     """
 
@@ -211,8 +201,7 @@ class FiltersClient(BaseFiltersClient):
             )
 
         else:
-            # Global /queryables – return only the STAC core properties that
-            # are guaranteed to be present across every collection.  The Filter
+            # Global /queryables – return only the STAC core properties. The Filter
             # spec explicitly allows this; clients that need collection-specific
             # properties should query /collections/{id}/queryables instead.
             return _build_queryables_doc(
@@ -228,34 +217,23 @@ class FiltersClient(BaseFiltersClient):
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client = cast(DuckdbClient, request.state.client)
-        # s3end = os.getenv("AWS_S3_ENDPOINT")
-        # if s3end:
-        #     client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
-        # else:
-        #     client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
-        # # try:
-        safe_href = href.replace("'", "''")
+        try:
+            safe_href = href.replace("'", "''")
+            arrow_table = client.query_to_table(
+                f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
+            )
 
-        # Use query_to_table() to get the result as a pyarrow Table
-        arrow_table = client.query_to_table(
-            f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
-        )
+            # Convert these columns from the Arrow Table to Python lists.
+            column_names = arrow_table.column("column_name").to_pylist()
+            column_types = arrow_table.column("column_type").to_pylist()
 
-        # The DESCRIBE query returns 'column_name' and 'column_type' columns.
-        # Convert these columns from the Arrow Table to Python lists.
-        column_names = arrow_table.column("column_name").to_pylist()
-        column_types = arrow_table.column("column_type").to_pylist()
+            # Zip the lists together
+            rows = list(zip(column_names, column_types))
 
-        # Zip the lists together to create the list of tuples required
-        # by the _extract_queryable_properties function.
-        rows = list(zip(column_names, column_types))
-
-        return _extract_queryable_properties(rows)
-    # except Exception:
-        #     # If schema introspection fails for any reason (e.g. network,
-        #     # missing extension) fall back to the STAC core queryables only
-        #     return dict(_STAC_CORE_QUERYABLES)
-
+            return _extract_queryable_properties(rows)
+        except Exception:
+                # If schema introspection fails fall back to the STAC core queryables
+                return dict(_STAC_CORE_QUERYABLES)
 
 def _build_queryables_doc(
     *,
