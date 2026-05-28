@@ -3,7 +3,7 @@ import copy
 import json
 import os
 import urllib.parse
-from typing import Any, cast, Optional
+from typing import Any, cast
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -56,56 +56,6 @@ class Client(BaseCoreClient):
             return collection_with_links(collection, request)
         else:
             raise NotFoundError(f"Collection does not exist: {collection_id}")
-        
-    def get_queryable(self, collection_id: str, **kwargs: Any) -> dict[str, Any]:
-
-        request = kwargs.pop("request")
-        client = cast(DuckdbClient, request.state.client)
-        hrefs = cast(dict[str, str], request.state.hrefs)
-
-        if not collection_id:
-            # we require a collection_id as the schema can vary
-            raise HTTPException(
-                status_code=400,
-                detail="A collection_id is required to access /queryables.",
-            )
-
-        parquet_path = hrefs.get(collection_id)
-        if not parquet_path:
-            raise NotFoundError(f"Collection '{collection_id}' not found.")
-
-        try:
-            # Use DuckDB to describe the schema of the Parquet file
-            query = f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}');"
-            schema_info = client.execute(query).fetchall()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not read schema for collection '{collection_id}': {e}",
-            )
-
-        properties = {}
-        for row in schema_info:
-            column_name, duckdb_type = row[0], row[1]
-            properties[column_name] = self._duckdb_type_to_json_schema(duckdb_type)
-
-        base_url = str(request.base_url).rstrip("/")
-        if collection_id:
-            schema_id = f"{base_url}/collections/{collection_id}/queryables"
-            title = f"Queryables for {collection_id}"
-        else:
-            schema_id = f"{base_url}/queryables"
-            title = "Root Queryables"
-            
-        return {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": schema_id,
-            "type": "object",
-            "title": title,
-            "properties": properties,
-            "additionalProperties": False
-        }        
-        
 
     def get_item(self, item_id: str, collection_id: str, **kwargs: Any) -> Item:
         item_collection = self.get_search(
@@ -430,55 +380,5 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
             "rel": "items",
             "type": "application/geo+json",
         },
-        # {
-        #     "href": str(
-        #         request.url_for("Get Queryable", collection_id=collection["id"])),
-        #     "rel": "items",
-        #     "type": "application/json",
-        # }
     ]
-    
     return collection
-
-
-def _duckdb_type_to_json_schema(self, duckdb_type: str) -> dict[str, str]:
-    """convert DuckDB data types to JSON schema types."""
-    duckdb_type = duckdb_type.upper()
-    if duckdb_type in ("BIGINT", "HUGEINT", "INTEGER", "SMALLINT", "TINYINT", "UBIGINT",
-                       "UINTEGER", "USMALLINT", "UTINYINT"):
-        return {"type": "integer"}
-    elif duckdb_type in ("DECIMAL", "DOUBLE", "FLOAT", "REAL"):
-        return {"type": "number"}
-    elif duckdb_type == "BOOLEAN":
-        return {"type": "boolean"}
-    elif duckdb_type in ("DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMPTZ"):
-        return {"type": "string", "format": "date-time"}
-    elif duckdb_type in ("VARCHAR", "TEXT", "STRING"):
-        return {"type": "string"}
-    elif duckdb_type == "GEOMETRY":
-            # Return a valid GeoJSON Geometry object schema definition
-            return {
-                "type": "object",
-                "title": "GeoJSON Geometry",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "enum": [
-                            "Point",
-                            "MultiPoint",
-                            "LineString",
-                            "MultiLineString",
-                            "Polygon",
-                            "MultiPolygon",
-                            "GeometryCollection"
-                        ]
-                    },
-                    "coordinates": {
-                        "type": "array"
-                    }
-                },
-                "required": ["type", "coordinates"]
-            }
-    else:
-            # Fallback for other unmapped complex database types
-            return {"type": "object"}
