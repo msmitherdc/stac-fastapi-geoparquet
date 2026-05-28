@@ -13,6 +13,7 @@ from typing import Any, cast
 from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.types.errors import NotFoundError
 from starlette.requests import Request
+from rustac import DuckdbClient
 
 # ---------------------------------------------------------------------------
 # DuckDB type → JSON-Schema type mapping
@@ -226,18 +227,11 @@ class FiltersClient(BaseFiltersClient):
         request: Request,
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
-        import duckdb  # local import – duckdb is a transitive dep via rustac
-
+        client: DuckdbClient = request.state.duckdb_client
         try:
-            con = duckdb.connect()
-            try:
-                con.execute("LOAD spatial;")
-            except Exception:
-                pass  # spatial not available in all environments; geometry will fall back
-
-            safe_href = href.replace("'", "''")
-            rows = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
+            # The client should already have the spatial extension loaded if needed.
+            rows = client.sql(
+                f"DESCRIBE SELECT * FROM read_parquet('{href}') LIMIT 0"
             ).fetchall()
             return _extract_queryable_properties(rows)
         except Exception:
