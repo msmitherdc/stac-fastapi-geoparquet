@@ -229,12 +229,24 @@ class FiltersClient(BaseFiltersClient):
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client: DuckdbClient = request.state.client
         # try:
-        # The client should already have the spatial extension loaded if needed.
-        rows = client.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{href}') LIMIT 0"
-        ).fetchall()
+        safe_href = href.replace("'", "''")
+
+        # Use query_to_table() to get the result as a pyarrow Table
+        arrow_table = client.query_to_table(
+            f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
+        )
+
+        # The DESCRIBE query returns 'column_name' and 'column_type' columns.
+        # Convert these columns from the Arrow Table to Python lists.
+        column_names = arrow_table.column("column_name").to_pylist()
+        column_types = arrow_table.column("column_type").to_pylist()
+
+        # Zip the lists together to create the list of tuples required
+        # by the _extract_queryable_properties function.
+        rows = list(zip(column_names, column_types))
+
         return _extract_queryable_properties(rows)
-        # except Exception:
+    # except Exception:
         #     # If schema introspection fails for any reason (e.g. network,
         #     # missing extension) fall back to the STAC core queryables only
         #     return dict(_STAC_CORE_QUERYABLES)
