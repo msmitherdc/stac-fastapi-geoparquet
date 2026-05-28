@@ -430,12 +430,12 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
             "rel": "items",
             "type": "application/geo+json",
         },
-        {
-            "href": str(
-                request.url_for("Get Queryable", collection_id=collection["id"])),
-            "rel": "items",
-            "type": "application/json",
-        }
+        # {
+        #     "href": str(
+        #         request.url_for("Get Queryable", collection_id=collection["id"])),
+        #     "rel": "items",
+        #     "type": "application/json",
+        # }
     ]
     
     return collection
