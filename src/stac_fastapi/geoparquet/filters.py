@@ -228,16 +228,16 @@ class FiltersClient(BaseFiltersClient):
     ) -> dict[str, dict[str, Any]]:
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client: DuckdbClient = request.state.client
-        try:
-            # The client should already have the spatial extension loaded if needed.
-            rows = client.sql(
-                f"DESCRIBE SELECT * FROM read_parquet('{href}') LIMIT 0"
-            ).fetchall()
-            return _extract_queryable_properties(rows)
-        except Exception:
-            # If schema introspection fails for any reason (e.g. network,
-            # missing extension) fall back to the STAC core queryables only
-            return dict(_STAC_CORE_QUERYABLES)
+        # try:
+        # The client should already have the spatial extension loaded if needed.
+        rows = client.sql(
+            f"DESCRIBE SELECT * FROM read_parquet('{href}') LIMIT 0"
+        ).fetchall()
+        return _extract_queryable_properties(rows)
+        # except Exception:
+        #     # If schema introspection fails for any reason (e.g. network,
+        #     # missing extension) fall back to the STAC core queryables only
+        #     return dict(_STAC_CORE_QUERYABLES)
 
 
 def _build_queryables_doc(
