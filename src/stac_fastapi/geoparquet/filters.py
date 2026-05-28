@@ -230,7 +230,7 @@ class FiltersClient(BaseFiltersClient):
         client: DuckdbClient = request.state.client
         # try:
         # The client should already have the spatial extension loaded if needed.
-        rows = client.sql(
+        rows = client.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{href}') LIMIT 0"
         ).fetchall()
         return _extract_queryable_properties(rows)
