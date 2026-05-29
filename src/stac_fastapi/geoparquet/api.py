@@ -14,7 +14,14 @@ from rustac import DuckdbClient
 from stac_fastapi.api.app import StacApi
 
 from .client import Client
-from .models import EXTENSIONS, CollectionSearchRequest, GetSearchRequestModel, ItemsGetRequestModel, PostSearchRequestModel
+from .models import (
+    EXTENSIONS,
+    CollectionSearchRequest,
+    GetSearchRequestModel,
+    ItemsGetRequestModel,
+    PostSearchRequestModel,
+    search_extensions,
+)
 from .settings import Settings
 
 GEOPARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
@@ -132,7 +139,7 @@ def create(
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
         collections_get_request_model=CollectionSearchRequest,
-        extensions=EXTENSIONS,
+        extensions=EXTENSIONS + search_extensions,
     )
     return api
 
