@@ -8,7 +8,7 @@ from stac_fastapi.extensions.core.collection_search import CollectionSearchExten
 from stac_fastapi.extensions.core.fields import FieldsExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 from stac_fastapi.extensions.core.sort import SortExtension
-from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.extensions.core.query import QueryExtension
 from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
@@ -58,6 +58,7 @@ collection_search_extensions = [
     QueryExtension(),
     SortExtension(),
     fields_extension,
+    CollectionSearchExtension(),
     CollectionSearchFilterExtension(),
     FreeTextExtension(),
 ]
