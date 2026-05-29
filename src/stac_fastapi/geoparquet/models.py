@@ -56,8 +56,7 @@ collection_search_ext = CollectionSearchExtension.from_extensions(
     )
 collections_get_request_model = collection_search_ext.GET
 
-# Override the GET model with hand-crafted one
-collection_search_ext.GET = CollectionSearchRequest    
+
 
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=FixedSearchGetRequest, extensions=EXTENSIONS
@@ -128,3 +127,6 @@ class CollectionSearchRequest(APIRequest):
         int | None,
         Query(ge=0, description="Number of collections to skip for pagination."),
     ] = attr.ib(default=None)
+
+# Override the GET model with hand-crafted one
+collection_search_ext.GET = CollectionSearchRequest    
