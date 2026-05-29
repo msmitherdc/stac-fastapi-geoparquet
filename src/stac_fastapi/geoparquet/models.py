@@ -53,7 +53,6 @@ EXTENSIONS = [
     collection_search_ext,
     fields_extension,
     filter_extension,
-    FilterExtension(client=FiltersClient()),
     FreeTextExtension(),
     OffsetPaginationExtension(),
     QueryExtension(),
