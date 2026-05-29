@@ -360,18 +360,29 @@ class Client(BaseCoreClient):
         atl = dict(request.headers)['x-grid-accesstags']
         atl = ast.literal_eval(atl)
         # add in AT List filtering, combining with any existing filter if necessary
-        if search_dict.get("filter"):
-            search_dict["filter"] = {
-                "op": "and",
-                "args": [
-                    search_dict["filter"],
-                    {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
-                ],
-            }
+        # do it all in cql2-text or cql2-json depending on filter_lang
+        if filter_lang.lower() == "cql2-text":
+            if search_dict.get("filter"):
+                search_dict["filter"] = (
+                    f"({search_dict['filter']}) AND access_tag_id IN ({', '.join(str(i) for i in atl)})"
+                )
+            else:
+                search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+        elif filter_lang.lower() == "cql2-json":
+            if search_dict.get("filter"):
+                search_dict["filter"] = {
+                    "op": "and",
+                    "args": [
+                        search_dict["filter"],
+                        {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
+                    ],
+                }
+            else:
+                search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
         else:
-            search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
-        ### end grid add
-        
+            raise ValueError(f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.")
+        # end grid at filtering
+
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
         items: list[Item] = []
