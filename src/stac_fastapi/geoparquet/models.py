@@ -33,6 +33,11 @@ ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=ItemCollectionUri, extensions=EXTENSIONS
 )
 
+collection_search_ext = CollectionSearchExtension()
+collection_search_ext.conformance_classes.append(
+    "https://api.stacspec.org/v1.0.0/collection-search"
+)
+
 
 def _q_converter(
     val: Annotated[
