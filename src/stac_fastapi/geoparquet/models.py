@@ -36,44 +36,30 @@ filter_extension.conformance_classes.append(
 fields_extension = FieldsExtension()
 fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
-EXTENSIONS = [
-    OffsetPaginationExtension(),
-    FilterExtension(client=FiltersClient()),
-    fields_extension,
-    filter_extension,
-    SortExtension(),
-]
-
-search_extensions = [
-    fields_extension,
-    QueryExtension(),
-    SortExtension(),
-    filter_extension,
-    FreeTextExtension(),
-]
-    # Create collection search extensions
 collection_search_extensions = [
-    QueryExtension(),
-    SortExtension(),
-    fields_extension,
-    CollectionSearchExtension(),
-    CollectionSearchFilterExtension(),
-    FreeTextExtension(),
-]
-
-collections_get_request_model = None
-collection_search_extensions = [
+    CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
+    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
     QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
     SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-    CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
-    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
 ]
 
 # Initialize collection search with its extensions
 collection_search_ext = CollectionSearchExtension.from_extensions(
     collection_search_extensions
 )
+
+EXTENSIONS = [
+    collection_search_ext,
+    fields_extension,
+    filter_extension,
+    FilterExtension(client=FiltersClient()),
+    FreeTextExtension(),
+    OffsetPaginationExtension(),
+    QueryExtension(),
+    SortExtension(),
+]
+
 
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=FixedSearchGetRequest, extensions=EXTENSIONS

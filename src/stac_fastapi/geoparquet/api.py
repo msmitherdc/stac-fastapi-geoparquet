@@ -139,7 +139,7 @@ def create(
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
         collections_get_request_model=CollectionSearchRequest,
-        extensions=EXTENSIONS + search_extensions,
+        extensions=EXTENSIONS,
     )
     return api
 
