@@ -398,6 +398,7 @@ class Client(BaseCoreClient):
                     }
                 )
                 
+                # log filters
                 print (collection_search_dict)
                 
                 collection_items = client.search(href, **collection_search_dict)
