@@ -4,6 +4,7 @@ import attr
 import stac_fastapi.api.models
 from fastapi import Query
 from stac_fastapi.api.models import ItemCollectionUri
+from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
 from stac_fastapi.extensions.core.fields import FieldsExtension
 from stac_fastapi.extensions.core.filter import FilterExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
@@ -14,6 +15,7 @@ from stac_pydantic.shared import BBox
 from .filters import FiltersClient
 from .search import FixedSearchGetRequest, _bbox_converter, _ids_converter
 
+# Extensions for item search — CollectionSearchExtension does NOT belong here
 EXTENSIONS = [
     OffsetPaginationExtension(),
     FilterExtension(client=FiltersClient()),
@@ -91,3 +93,10 @@ class CollectionSearchRequest(APIRequest):
         int | None,
         Query(ge=0, description="Number of collections to skip for pagination."),
     ] = attr.ib(default=None)
+    
+CollectionSearch = CollectionSearchExtension.from_extensions(
+    extensions=[],          # add FreeTextExtension() etc. here if needed
+    # schema_href=...       # optional: link to your OpenAPI schema
+)
+# Override the GET model with your hand-crafted one
+CollectionSearch.GET = CollectionSearchRequest    
