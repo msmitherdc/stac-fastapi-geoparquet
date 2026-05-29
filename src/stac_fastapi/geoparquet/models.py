@@ -129,4 +129,4 @@ class CollectionSearchRequest(APIRequest):
     ] = attr.ib(default=None)
 
 # Override the GET model with hand-crafted one
-collection_search_ext.GET = CollectionSearchRequest    
+collection_search_ext.GET = CollectionSearchRequest
