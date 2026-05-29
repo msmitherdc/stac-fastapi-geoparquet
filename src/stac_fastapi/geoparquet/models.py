@@ -27,14 +27,28 @@ from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
 
-# Extensions for item search — CollectionSearchExtension does NOT belong here
-
+# ---------------------------------------------------------------------------
+# Item-search extensions (used for GET /search, POST /search, GET /items)
+# ---------------------------------------------------------------------------
 filter_extension = FilterExtension(client=FiltersClient())
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 fields_extension = FieldsExtension()
 fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
+ITEM_EXTENSIONS = [
+    fields_extension,
+    filter_extension,
+    FreeTextExtension(),
+    OffsetPaginationExtension(),
+    QueryExtension(),
+    SortExtension(),
+]
+
+# ---------------------------------------------------------------------------
+# Collection-search extensions (used for GET /collections)
+# ---------------------------------------------------------------------------
 
 collection_search_extensions = [
     CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
@@ -44,30 +58,22 @@ collection_search_extensions = [
     SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
 ]
 
-# Initialize collection search with its extensions
 collection_search_ext = CollectionSearchExtension.from_extensions(
     collection_search_extensions
 )
 
-EXTENSIONS = [
-    collection_search_ext,
-    fields_extension,
-    filter_extension,
-    FreeTextExtension(),
-    OffsetPaginationExtension(),
-    QueryExtension(),
-    SortExtension(),
-]
-
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
 
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
-    base_model=FixedSearchGetRequest, extensions=EXTENSIONS
+    base_model=FixedSearchGetRequest, extensions=ITEM_EXTENSIONS
 )
 PostSearchRequestModel = stac_fastapi.api.models.create_post_request_model(
-    base_model=BaseSearchPostRequest, extensions=EXTENSIONS
+    base_model=BaseSearchPostRequest, extensions=ITEM_EXTENSIONS
 )
 ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
-    base_model=ItemCollectionUri, extensions=EXTENSIONS
+    base_model=ItemCollectionUri, extensions=ITEM_EXTENSIONS
 )
 
 def _q_converter(
@@ -130,5 +136,7 @@ class CollectionSearchRequest(APIRequest):
         Query(ge=0, description="Number of collections to skip for pagination."),
     ] = attr.ib(default=None)
 
-# Override the GET model with hand-crafted one
+
+# Override the GET model with the hand-crafted one so the /collections
+# endpoint uses CollectionSearchRequest instead of the auto-generated model.
 collection_search_ext.GET = CollectionSearchRequest
