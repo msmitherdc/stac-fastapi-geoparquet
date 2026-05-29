@@ -9,9 +9,7 @@ from stac_fastapi.extensions.core.fields import FieldsExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 from stac_fastapi.extensions.core.sort import SortExtension
 from stac_fastapi.extensions.core.query import QueryExtension
-from stac_fastapi.core.extensions.collections_search import (
-    CollectionsSearchEndpointExtension,
-)
+
 from stac_fastapi.extensions.core import (
     CollectionSearchFilterExtension,
     FilterExtension,
@@ -68,9 +66,7 @@ collection_search_extensions = [
     QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
     SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
     FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-    CollectionSearchFilterExtension(
-        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-    ),
+    CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
     FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
 ]
 
@@ -78,20 +74,6 @@ collection_search_extensions = [
 collection_search_ext = CollectionSearchExtension.from_extensions(
     collection_search_extensions
 )
-
-# Initialize collections-search endpoint extension
-collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
-    GET=collections_get_request_model,
-    conformance_classes=[
-        "https://api.stacspec.org/v1.0.0/collection-search",
-        QueryConformanceClasses.COLLECTIONS,
-        FilterConformanceClasses.COLLECTIONS,
-        FreeTextConformanceClasses.COLLECTIONS,
-        SortConformanceClasses.COLLECTIONS,
-        FieldsConformanceClasses.COLLECTIONS,
-    ],
-)
-EXTENSIONS.append(collections_search_endpoint_ext)
 
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=FixedSearchGetRequest, extensions=EXTENSIONS
