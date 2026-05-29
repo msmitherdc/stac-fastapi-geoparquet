@@ -360,16 +360,16 @@ class Client(BaseCoreClient):
         atl = dict(request.headers)['x-grid-accesstags']
         atl = ast.literal_eval(atl)
         # add in AT List filtering, combining with any existing filter if necessary
-        if search_dict.get("filter"):
-            search_dict["filter"] = {
-                "op": "and",
-                "args": [
-                    search_dict["filter"],
-                    {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
-                ],
-            }
-        else:
-            search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+        # if search_dict.get("filter"):
+        #     search_dict["filter"] = {
+        #         "op": "and",
+        #         "args": [
+        #             search_dict["filter"],
+        #             {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
+        #         ],
+        #     }
+        # else:
+        #     search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
         ### end grid add
         
         limit = search_dict.get("limit", DEFAULT_LIMIT)
@@ -386,6 +386,9 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
+                
+                print (**collection_search_dict)
+                
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
                     # Careful ... we aren't updating `collection_items` with the
