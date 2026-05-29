@@ -15,12 +15,11 @@ from stac_fastapi.api.app import StacApi
 
 from .client import Client
 from .models import (
-    EXTENSIONS,
+    ITEM_EXTENSIONS,
     CollectionSearchRequest,
     GetSearchRequestModel,
     ItemsGetRequestModel,
     PostSearchRequestModel,
-    search_extensions,
 )
 from .settings import Settings
 
@@ -139,7 +138,7 @@ def create(
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
         collections_get_request_model=CollectionSearchRequest,
-        extensions=EXTENSIONS,
+        extensions=ITEM_EXTENSIONS,
     )
     return api
 

@@ -37,7 +37,7 @@ filter_extension.conformance_classes.append(
 fields_extension = FieldsExtension()
 fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
-ITEM_EXTENSIONS = [
+EXTENSIONS = [
     fields_extension,
     filter_extension,
     FreeTextExtension(),
