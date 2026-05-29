@@ -387,7 +387,7 @@ class Client(BaseCoreClient):
                     }
                 )
                 
-                print (**collection_search_dict)
+                print (collection_search_dict)
                 
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
