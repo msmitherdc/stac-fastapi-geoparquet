@@ -9,6 +9,16 @@ from stac_fastapi.extensions.core.fields import FieldsExtension
 from stac_fastapi.extensions.core.filter import FilterExtension
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 from stac_fastapi.extensions.core.sort import SortExtension
+
+from stac_fastapi.extensions.core import (
+    CollectionSearchExtension,
+    CollectionSearchFilterExtension,
+    CollectionSearchPostExtension,
+    FilterExtension,
+    FreeTextExtension,
+
+)
+from stac_fastapi.extensions.core import QueryExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox
 
@@ -23,6 +33,32 @@ EXTENSIONS = [
     SortExtension(),
 ]
 
+search_extensions = [
+    FieldsExtension(),
+    QueryExtension(),
+    SortExtension(),
+    FilterExtension(),
+    FreeTextExtension(),
+]
+    # Create collection search extensions
+collection_search_extensions = [
+    QueryExtension(),
+    SortExtension(),
+    FieldsExtension(),
+    CollectionSearchFilterExtension(),
+    FreeTextExtension(),
+]
+
+collections_get_request_model = None
+    # Initialize collection search with its extensions
+collection_search_ext = CollectionSearchExtension.from_extensions(
+        collection_search_extensions
+    )
+collections_get_request_model = collection_search_ext.GET
+
+# Override the GET model with hand-crafted one
+collection_search_ext.GET = CollectionSearchRequest    
+
 GetSearchRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=FixedSearchGetRequest, extensions=EXTENSIONS
 )
@@ -32,12 +68,6 @@ PostSearchRequestModel = stac_fastapi.api.models.create_post_request_model(
 ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=ItemCollectionUri, extensions=EXTENSIONS
 )
-
-collection_search_ext = CollectionSearchExtension()
-collection_search_ext.conformance_classes.append(
-    "https://api.stacspec.org/v1.0.0/collection-search"
-)
-
 
 def _q_converter(
     val: Annotated[
@@ -98,10 +128,3 @@ class CollectionSearchRequest(APIRequest):
         int | None,
         Query(ge=0, description="Number of collections to skip for pagination."),
     ] = attr.ib(default=None)
-    
-CollectionSearch = CollectionSearchExtension.from_extensions(
-    extensions=[],          # add FreeTextExtension() etc. here if needed
-    # schema_href=...       # optional: link to your OpenAPI schema
-)
-# Override the GET model with your hand-crafted one
-CollectionSearch.GET = CollectionSearchRequest    
