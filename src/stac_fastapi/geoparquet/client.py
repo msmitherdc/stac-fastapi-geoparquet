@@ -382,6 +382,9 @@ class Client(BaseCoreClient):
                     search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
             else:
                 raise ValueError(f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.")
+        else:
+            search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+            filter_lang = "cql2-text"
         # end grid at filtering
 
         limit = search_dict.get("limit", DEFAULT_LIMIT)
