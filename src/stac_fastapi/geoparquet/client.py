@@ -200,6 +200,9 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
         collections = cast(dict[str, Collection], request.state.collections)
         if collection := collections.get(collection_id):
+            atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+            if collection.get("access_tag_id") not in atl:
+                raise NotFoundError(f"Collection does not exist: {collection_id}")
             return collection_with_links(collection, request)
         else:
             raise NotFoundError(f"Collection does not exist: {collection_id}")
@@ -318,10 +321,24 @@ class Client(BaseCoreClient):
         else:
             client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
 
+        # Resolve the access tag list early — used both to gate the collections
+        # list and to inject the CQL filter below.
+        atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+        all_collections = cast(dict[str, Collection], request.state.collections)
+
         if search.collections:
-            collections = search.collections
+            # Caller specified explicit collections — honour the request but
+            # silently drop any the user's access tags don't cover.
+            collections = [
+                c for c in search.collections
+                if all_collections.get(c, {}).get("access_tag_id") in atl
+            ]
         else:
-            collections = list(hrefs.keys())
+            # No collections specified — use every href the user can access.
+            collections = [
+                c for c in hrefs.keys()
+                if all_collections.get(c, {}).get("access_tag_id") in atl
+            ]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
@@ -329,10 +346,12 @@ class Client(BaseCoreClient):
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
             search_dict["filter"] = filter_expr
-        if filter_lang := search_dict.pop("filter_lang", None):
+        # Capture filter_lang before any cleanup so the AT injection below
+        # always has the correct value (fixes the None-when-POST-has-no-filter-lang bug).
+        filter_lang: str | None = search_dict.pop("filter_lang", None)
+        if filter_lang:
             search_dict["filter-lang"] = filter_lang
         if "filter" not in search_dict:
-            search_dict.pop("filter_lang", None)
             search_dict.pop("filter-lang", None)
         if fields := search_dict.pop("fields", None):
             if isinstance(fields, list):
@@ -356,9 +375,9 @@ class Client(BaseCoreClient):
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
 
-        # fetch the access tags from the request
-        atl = dict(request.headers)['x-grid-accesstags']
-        atl = ast.literal_eval(atl)
+        # Inject access_tag_id as a CQL filter (defense-in-depth: the collections
+        # list above already restricts to permitted hrefs, but this ensures the
+        # filter is also applied at the row level inside each parquet file).
         # add in AT List filtering, combining with any existing filter if necessary
         # do it all in cql2-text or cql2-json depending on filter_lang
         if filter_lang:
