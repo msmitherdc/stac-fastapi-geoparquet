@@ -16,6 +16,7 @@ dependencies = [
     "stac-fastapi-api>=5.0.2",
     "stac-fastapi-extensions>=5.0.2",
     "stac-fastapi-types>=5.0.2",
+    "debugpy>=1.8.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.14",

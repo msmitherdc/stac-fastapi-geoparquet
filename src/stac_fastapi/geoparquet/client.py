@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import urllib.parse
+from datetime import datetime as dt
 from typing import Any, cast
 
 from fastapi import HTTPException
@@ -25,34 +26,183 @@ class Client(BaseCoreClient):
 
     def all_collections(self, **kwargs: Any) -> Collections:
         request = kwargs.pop("request")
-        # grid specific filtering based on access tags
+
+        # ---- access-tag filtering (grid-specific) -------------------------
         atl = dict(request.headers)['x-grid-accesstags']
         atl = ast.literal_eval(atl)
         collections = cast(dict[str, Collection], request.state.collections)
-        collections = {cname: coll for cname, coll in collections.items() if collections[cname]['access_tag_id'] in atl }
-        # now collections are filtered
+        collections = {
+            cname: coll
+            for cname, coll in collections.items()
+            if collections[cname]['access_tag_id'] in atl
+        }
+
+        # ---- collection search parameters (injected by CollectionSearchRequest) --
+        ids: list[str] | None = kwargs.pop("ids", None)
+        bbox: tuple | None = kwargs.pop("bbox", None)
+        datetime_str: str | None = kwargs.pop("datetime", None)
+        q: list[str] | None = kwargs.pop("q", None)
+        limit: int | None = kwargs.pop("limit", None)
+        offset: int | None = kwargs.pop("offset", None)
+
+        matched = list(collections.values())
+
+        # Filter by ids — exact match OR partial substring match.
+        # A collection passes if its id exactly equals any term OR contains any
+        # term as a substring (case-insensitive), so `ids=naip` matches both
+        # "naip" and "naip-10".
+        if ids:
+            ids_lower = [term.lower() for term in ids]
+
+            def _id_matches(coll_id: str) -> bool:
+                cid = coll_id.lower()
+                return any(term == cid or term in cid for term in ids_lower)
+
+            matched = [c for c in matched if _id_matches(c.get("id", ""))]
+
+        # Free-text search: check title, description, keywords
+        if q:
+            def _matches_q(coll: Collection, terms: list[str]) -> bool:
+                haystack = " ".join(
+                    filter(
+                        None,
+                        [
+                            coll.get("title", ""),
+                            coll.get("description", ""),
+                            " ".join(coll.get("keywords", [])),
+                        ],
+                    )
+                ).lower()
+                return all(term.lower() in haystack for term in terms)
+
+            matched = [c for c in matched if _matches_q(c, q)]
+
+        # Spatial filter: collection extent bbox must overlap request bbox
+        if bbox:
+            req_min_lon, req_min_lat, req_max_lon, req_max_lat = (
+                float(bbox[0]),
+                float(bbox[1]),
+                float(bbox[2]),
+                float(bbox[3]),
+            )
+
+            def _extent_overlaps_bbox(coll: Collection) -> bool:
+                try:
+                    coll_bbox = (
+                        coll.get("extent", {})
+                        .get("spatial", {})
+                        .get("bbox", [[]])[0]
+                    )
+                    if not coll_bbox or len(coll_bbox) < 4:
+                        return True  # no spatial info — include by default
+                    c_min_lon, c_min_lat, c_max_lon, c_max_lat = (
+                        float(coll_bbox[0]),
+                        float(coll_bbox[1]),
+                        float(coll_bbox[2]),
+                        float(coll_bbox[3]),
+                    )
+                    # Overlaps when NOT (one is entirely to the left/right/above/below)
+                    return not (
+                        c_max_lon < req_min_lon
+                        or c_min_lon > req_max_lon
+                        or c_max_lat < req_min_lat
+                        or c_min_lat > req_max_lat
+                    )
+                except Exception:
+                    return True
+
+            matched = [c for c in matched if _extent_overlaps_bbox(c)]
+
+        # Temporal filter: collection temporal extent must overlap request datetime
+        if datetime_str:
+            req_start, req_end = _parse_datetime_interval(datetime_str)
+
+            def _temporal_overlaps(coll: Collection) -> bool:
+                try:
+                    interval = (
+                        coll.get("extent", {})
+                        .get("temporal", {})
+                        .get("interval", [[None, None]])[0]
+                    )
+                    coll_start_str, coll_end_str = interval[0], interval[1]
+                    coll_start = _parse_rfc3339(coll_start_str) if coll_start_str else None
+                    coll_end = _parse_rfc3339(coll_end_str) if coll_end_str else None
+                    # Open collection end means "still active"
+                    effective_end = coll_end if coll_end else dt.max
+                    effective_start = coll_start if coll_start else dt.min
+                    effective_req_end = req_end if req_end else dt.max
+                    effective_req_start = req_start if req_start else dt.min
+                    return (
+                        effective_start <= effective_req_end
+                        and effective_end >= effective_req_start
+                    )
+                except Exception:
+                    return True
+
+            matched = [c for c in matched if _temporal_overlaps(c)]
+
+        # Pagination
+        total_matched = len(matched)
+        applied_offset = offset or 0
+        applied_limit = limit or total_matched
+        page = matched[applied_offset: applied_offset + applied_limit]
+
+        # Build next/prev links if paginating
+        links: list[dict[str, Any]] = [
+            {
+                "href": str(request.url_for("Landing Page")),
+                "rel": "root",
+                "type": "application/json",
+            },
+            {
+                "href": str(request.url),
+                "rel": "self",
+                "type": "application/json",
+            },
+        ]
+        next_offset = applied_offset + applied_limit
+        if next_offset < total_matched:
+            next_params = dict(request.query_params)
+            next_params["offset"] = str(next_offset)
+            if limit:
+                next_params["limit"] = str(applied_limit)
+            links.append(
+                {
+                    "href": str(request.url_for("Get Collections"))
+                    + "?"
+                    + urllib.parse.urlencode(next_params),
+                    "rel": "next",
+                    "type": "application/json",
+                }
+            )
+        if applied_offset > 0:
+            prev_offset = max(0, applied_offset - applied_limit)
+            prev_params = dict(request.query_params)
+            prev_params["offset"] = str(prev_offset)
+            if limit:
+                prev_params["limit"] = str(applied_limit)
+            links.append(
+                {
+                    "href": str(request.url_for("Get Collections"))
+                    + "?"
+                    + urllib.parse.urlencode(prev_params),
+                    "rel": "prev",
+                    "type": "application/json",
+                }
+            )
+
         return Collections(
-            collections=[
-                collection_with_links(c, request) for c in collections.values()
-            ],
-            links=[
-                {
-                    "href": str(request.url_for("Landing Page")),
-                    "rel": "root",
-                    "type": "application/json",
-                },
-                {
-                    "href": str(request.url_for("Get Collections")),
-                    "rel": "self",
-                    "type": "application/json",
-                },
-            ],
+            collections=[collection_with_links(c, request) for c in page],
+            links=links,
         )
 
     def get_collection(self, collection_id: str, **kwargs: Any) -> Collection:
         request = kwargs.pop("request")
         collections = cast(dict[str, Collection], request.state.collections)
         if collection := collections.get(collection_id):
+            atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+            if collection.get("access_tag_id") not in atl:
+                raise NotFoundError(f"Collection does not exist: {collection_id}")
             return collection_with_links(collection, request)
         else:
             raise NotFoundError(f"Collection does not exist: {collection_id}")
@@ -171,10 +321,24 @@ class Client(BaseCoreClient):
         else:
             client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
 
+        # Resolve the access tag list early — used both to gate the collections
+        # list and to inject the CQL filter below.
+        atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+        all_collections = cast(dict[str, Collection], request.state.collections)
+
         if search.collections:
-            collections = search.collections
+            # Caller specified explicit collections — honour the request but
+            # silently drop any the user's access tags don't cover.
+            collections = [
+                c for c in search.collections
+                if all_collections.get(c, {}).get("access_tag_id") in atl
+            ]
         else:
-            collections = list(hrefs.keys())
+            # No collections specified — use every href the user can access.
+            collections = [
+                c for c in hrefs.keys()
+                if all_collections.get(c, {}).get("access_tag_id") in atl
+            ]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
@@ -182,10 +346,12 @@ class Client(BaseCoreClient):
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
             search_dict["filter"] = filter_expr
-        if filter_lang := search_dict.pop("filter_lang", None):
+        # Capture filter_lang before any cleanup so the AT injection below
+        # always has the correct value (fixes the None-when-POST-has-no-filter-lang bug).
+        filter_lang: str | None = search_dict.pop("filter_lang", None)
+        if filter_lang:
             search_dict["filter-lang"] = filter_lang
         if "filter" not in search_dict:
-            search_dict.pop("filter_lang", None)
             search_dict.pop("filter-lang", None)
         if fields := search_dict.pop("fields", None):
             if isinstance(fields, list):
@@ -209,22 +375,37 @@ class Client(BaseCoreClient):
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
 
-        # fetch the access tags from the request
-        atl = dict(request.headers)['x-grid-accesstags']
-        atl = ast.literal_eval(atl)
+        # Inject access_tag_id as a CQL filter (defense-in-depth: the collections
+        # list above already restricts to permitted hrefs, but this ensures the
+        # filter is also applied at the row level inside each parquet file).
         # add in AT List filtering, combining with any existing filter if necessary
-        if search_dict.get("filter"):
-            search_dict["filter"] = {
-                "op": "and",
-                "args": [
-                    search_dict["filter"],
-                    {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
-                ],
-            }
+        # do it all in cql2-text or cql2-json depending on filter_lang
+        if filter_lang:
+            if filter_lang == "cql2-text":
+                if search_dict.get("filter"):
+                    search_dict["filter"] = (
+                        f"({search_dict['filter']}) AND access_tag_id IN ({', '.join(str(i) for i in atl)})"
+                    )
+                else:
+                    search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+            elif filter_lang == "cql2-json":
+                if search_dict.get("filter"):
+                    search_dict["filter"] = {
+                        "op": "and",
+                        "args": [
+                            search_dict["filter"],
+                            {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
+                        ],
+                    }
+                else:
+                    search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+            else:
+                raise ValueError(f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.")
         else:
-            search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
-        ### end grid add
-        
+            search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+            filter_lang = "cql2-text"
+        # end grid at filtering
+
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
         items: list[Item] = []
@@ -239,6 +420,10 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
+                
+                # log filters
+                print (collection_search_dict)
+                
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
                     # Careful ... we aren't updating `collection_items` with the
@@ -390,3 +575,29 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
         },
     ]
     return collection
+
+# ---------------------------------------------------------------------------
+# Helpers for temporal collection search
+# ---------------------------------------------------------------------------
+
+def _parse_rfc3339(value: str) -> dt:
+    """Parse an RFC 3339 datetime string, handling the trailing 'Z'."""
+    return dt.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _parse_datetime_interval(value: str) -> tuple[dt | None, dt | None]:
+    """Parse a STAC datetime/interval string into (start, end).
+
+    Single datetime  →  (datetime, datetime)
+    Closed interval  →  (start, end)
+    Open start (..)  →  (None, end)
+    Open end   (..)  →  (start, None)
+    """
+    if "/" not in value:
+        d = _parse_rfc3339(value.strip())
+        return d, d
+
+    raw_start, raw_end = value.split("/", 1)
+    start = None if raw_start.strip() in ("..", "") else _parse_rfc3339(raw_start.strip())
+    end = None if raw_end.strip() in ("..", "") else _parse_rfc3339(raw_end.strip())
+    return start, end

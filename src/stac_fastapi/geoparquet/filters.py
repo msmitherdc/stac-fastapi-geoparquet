@@ -220,7 +220,7 @@ class FiltersClient(BaseFiltersClient):
         try:
             safe_href = href.replace("'", "''")
             arrow_table = client.query_to_table(
-                f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
+                f"DESCRIBE SELECT * EXCLUDE (access_tag_id) FROM read_parquet('{safe_href}') LIMIT 0"
             )
 
             # Convert these columns from the Arrow Table to Python lists.
