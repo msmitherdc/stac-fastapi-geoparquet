@@ -323,14 +323,16 @@ class Client(BaseCoreClient):
         hrefs = cast(dict[str, str], request.state.hrefs)
 
         s3end = os.getenv("AWS_S3_ENDPOINT")
-        if s3end:
-            client.execute(
-                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-            )
-        else:
-            client.execute(
-                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-            )
+        skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
+        if not skip_s3:
+            if s3end:
+                client.execute(
+                    f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+                )
+            else:
+                client.execute(
+                    "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+                )
 
         # Resolve the access tag list early — used both to gate the collections
         # list and to inject the CQL filter below.

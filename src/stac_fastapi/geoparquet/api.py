@@ -45,14 +45,20 @@ class State(TypedDict):
 async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     client = app.extra["duckdb_client"]
     s3end = os.getenv("AWS_S3_ENDPOINT")
-    if s3end:
-        client.execute(
-            f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-        )
-    else:
-        client.execute(
-            "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-        )
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[State]:
+    client = app.extra["duckdb_client"]
+    s3end = os.getenv("AWS_S3_ENDPOINT")
+    skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
+    if not skip_s3:
+        if s3end:
+            client.execute(
+                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+            )
+        else:
+            client.execute(
+                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+                )
     settings: Settings = app.extra["settings"]
     collections = app.extra["collections"]
     collection_dict = dict()
