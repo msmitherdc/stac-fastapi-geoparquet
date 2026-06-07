@@ -313,12 +313,12 @@ class Client(BaseCoreClient):
         search: BaseSearchPostRequest,
         **kwargs: Any,
     ) -> ItemCollection:
-        
+
         def _has_access(coll: Collection | None, atl: list[int]) -> bool:
             if coll is None:
                 return False
             return coll.get("access_tag_id") in atl  # type: ignore[typeddict-item]
-        
+
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
 
@@ -348,9 +348,7 @@ class Client(BaseCoreClient):
         else:
             # No collections specified — use every href the user can access.
             collections = [
-                c
-                for c in hrefs.keys()
-                if _has_access(all_collections.get(c), atl)
+                c for c in hrefs.keys() if _has_access(all_collections.get(c), atl)
             ]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
