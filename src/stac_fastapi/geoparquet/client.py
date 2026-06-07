@@ -28,13 +28,13 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
 
         # ---- access-tag filtering (grid-specific) -------------------------
-        atl = dict(request.headers)['x-grid-accesstags']
+        atl = dict(request.headers)["x-grid-accesstags"]
         atl = ast.literal_eval(atl)
         collections = cast(dict[str, Collection], request.state.collections)
         collections = {
             cname: coll
             for cname, coll in collections.items()
-            if collections[cname]['access_tag_id'] in atl
+            if collections[cname]["access_tag_id"] in atl
         }
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
@@ -62,6 +62,7 @@ class Client(BaseCoreClient):
 
         # Free-text search: check title, description, keywords
         if q:
+
             def _matches_q(coll: Collection, terms: list[str]) -> bool:
                 haystack = " ".join(
                     filter(
@@ -89,9 +90,7 @@ class Client(BaseCoreClient):
             def _extent_overlaps_bbox(coll: Collection) -> bool:
                 try:
                     coll_bbox = (
-                        coll.get("extent", {})
-                        .get("spatial", {})
-                        .get("bbox", [[]])[0]
+                        coll.get("extent", {}).get("spatial", {}).get("bbox", [[]])[0]
                     )
                     if not coll_bbox or len(coll_bbox) < 4:
                         return True  # no spatial info — include by default
@@ -125,7 +124,9 @@ class Client(BaseCoreClient):
                         .get("interval", [[None, None]])[0]
                     )
                     coll_start_str, coll_end_str = interval[0], interval[1]
-                    coll_start = _parse_rfc3339(coll_start_str) if coll_start_str else None
+                    coll_start = (
+                        _parse_rfc3339(coll_start_str) if coll_start_str else None
+                    )
                     coll_end = _parse_rfc3339(coll_end_str) if coll_end_str else None
                     # Open collection end means "still active"
                     effective_end = coll_end if coll_end else dt.max
@@ -145,7 +146,7 @@ class Client(BaseCoreClient):
         total_matched = len(matched)
         applied_offset = offset or 0
         applied_limit = limit or total_matched
-        page = matched[applied_offset: applied_offset + applied_limit]
+        page = matched[applied_offset : applied_offset + applied_limit]
 
         # Build next/prev links if paginating
         links: list[dict[str, Any]] = [
@@ -314,12 +315,16 @@ class Client(BaseCoreClient):
     ) -> ItemCollection:
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
-        
+
         s3end = os.getenv("AWS_S3_ENDPOINT")
         if s3end:
-            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+            client.execute(
+                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+            )
         else:
-            client.execute("CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+            client.execute(
+                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+            )
 
         # Resolve the access tag list early — used both to gate the collections
         # list and to inject the CQL filter below.
@@ -330,13 +335,15 @@ class Client(BaseCoreClient):
             # Caller specified explicit collections — honour the request but
             # silently drop any the user's access tags don't cover.
             collections = [
-                c for c in search.collections
+                c
+                for c in search.collections
                 if all_collections.get(c, {}).get("access_tag_id") in atl
             ]
         else:
             # No collections specified — use every href the user can access.
             collections = [
-                c for c in hrefs.keys()
+                c
+                for c in hrefs.keys()
                 if all_collections.get(c, {}).get("access_tag_id") in atl
             ]
 
@@ -387,7 +394,9 @@ class Client(BaseCoreClient):
                         f"({search_dict['filter']}) AND access_tag_id IN ({', '.join(str(i) for i in atl)})"
                     )
                 else:
-                    search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+                    search_dict["filter"] = (
+                        f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+                    )
             elif filter_lang == "cql2-json":
                 if search_dict.get("filter"):
                     search_dict["filter"] = {
@@ -398,11 +407,18 @@ class Client(BaseCoreClient):
                         ],
                     }
                 else:
-                    search_dict["filter"] = {"op": "in", "args": [{"property": "access_tag_id"}, atl]}
+                    search_dict["filter"] = {
+                        "op": "in",
+                        "args": [{"property": "access_tag_id"}, atl],
+                    }
             else:
-                raise ValueError(f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.")
+                raise ValueError(
+                    f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'."
+                )
         else:
-            search_dict["filter"] = f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+            search_dict["filter"] = (
+                f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
+            )
             filter_lang = "cql2-text"
         # end grid at filtering
 
@@ -420,10 +436,10 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
-                
+
                 # log filters
-                print (collection_search_dict)
-                
+                print(collection_search_dict)
+
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
                     # Careful ... we aren't updating `collection_items` with the
@@ -443,7 +459,7 @@ class Client(BaseCoreClient):
 
         if collections and ((search.limit or DEFAULT_LIMIT) <= num_items):
             next_search = copy.deepcopy(search_dict)
-            next_search.pop('filter', None)
+            next_search.pop("filter", None)
             next_search["limit"] = search.limit or DEFAULT_LIMIT
             next_search["offset"] = offset
             next_search["collections"] = collections
@@ -576,9 +592,11 @@ def collection_with_links(collection: Collection, request: Request) -> Collectio
     ]
     return collection
 
+
 # ---------------------------------------------------------------------------
 # Helpers for temporal collection search
 # ---------------------------------------------------------------------------
+
 
 def _parse_rfc3339(value: str) -> dt:
     """Parse an RFC 3339 datetime string, handling the trailing 'Z'."""
@@ -598,6 +616,8 @@ def _parse_datetime_interval(value: str) -> tuple[dt | None, dt | None]:
         return d, d
 
     raw_start, raw_end = value.split("/", 1)
-    start = None if raw_start.strip() in ("..", "") else _parse_rfc3339(raw_start.strip())
+    start = (
+        None if raw_start.strip() in ("..", "") else _parse_rfc3339(raw_start.strip())
+    )
     end = None if raw_end.strip() in ("..", "") else _parse_rfc3339(raw_end.strip())
     return start, end

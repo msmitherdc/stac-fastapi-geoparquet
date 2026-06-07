@@ -1,5 +1,4 @@
-"""Tests for GET /collections collection search parameters.
-"""
+"""Tests for GET /collections collection search parameters."""
 
 import urllib.parse
 
@@ -13,6 +12,7 @@ ALL_IDS = {"naip", "naip-10", "openaerialmap-10", "openaerialmap"}
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _get_collections(client: TestClient, **params) -> dict:
     response = client.get("/collections", params=params)
     assert response.status_code == 200, response.text
@@ -23,6 +23,7 @@ def _get_collections(client: TestClient, **params) -> dict:
 # Baseline
 # ---------------------------------------------------------------------------
 
+
 def test_all_collections_returned_by_default(client: TestClient) -> None:
     data = _get_collections(client)
     ids = {c["id"] for c in data["collections"]}
@@ -32,6 +33,7 @@ def test_all_collections_returned_by_default(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 # ids filter
 # ---------------------------------------------------------------------------
+
 
 def test_filter_by_exact_id(client: TestClient) -> None:
     # Exact match — only "naip" (not "naip-10") when the term equals the id.
@@ -79,6 +81,7 @@ def test_filter_by_unknown_id_returns_empty(client: TestClient) -> None:
 # q (free-text) filter
 # ---------------------------------------------------------------------------
 
+
 def test_freetext_matches_description(client: TestClient) -> None:
     # All test collections share the word "rustac" in their description.
     data = _get_collections(client, q="rustac")
@@ -104,6 +107,7 @@ def test_freetext_multi_term_and_semantics(client: TestClient) -> None:
 # bbox filter
 # ---------------------------------------------------------------------------
 
+
 def test_bbox_overlapping_naip(client: TestClient) -> None:
     # naip bbox: -109.13, 36.93, -101.99, 41.07  (Colorado / Wyoming)
     data = _get_collections(client, bbox="-108,37,-102,41")
@@ -126,6 +130,7 @@ def test_bbox_no_overlap_returns_empty(client: TestClient) -> None:
 # datetime filter
 # ---------------------------------------------------------------------------
 
+
 def test_datetime_single_overlapping(client: TestClient) -> None:
     # naip temporal: 2019-09-19 → 2022-08-27
     data = _get_collections(client, datetime="2021-01-01T00:00:00Z")
@@ -135,7 +140,9 @@ def test_datetime_single_overlapping(client: TestClient) -> None:
 
 def test_datetime_interval_no_overlap(client: TestClient) -> None:
     # Before all collections (naip starts 2019-09-19)
-    data = _get_collections(client, datetime="1900-01-01T00:00:00Z/1901-01-01T00:00:00Z")
+    data = _get_collections(
+        client, datetime="1900-01-01T00:00:00Z/1901-01-01T00:00:00Z"
+    )
     ids = {c["id"] for c in data["collections"]}
     assert "naip" not in ids
     assert "naip-10" not in ids
@@ -151,6 +158,7 @@ def test_datetime_open_end_interval(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 # limit / offset (pagination)
 # ---------------------------------------------------------------------------
+
 
 def test_limit_reduces_result_count(client: TestClient) -> None:
     data = _get_collections(client, limit=2)
@@ -205,6 +213,7 @@ def test_next_link_href_encodes_offset(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 # Combined filters
 # ---------------------------------------------------------------------------
+
 
 def test_ids_and_q_combined(client: TestClient) -> None:
     # "openaerialmap" (partial) matches openaerialmap + openaerialmap-10;

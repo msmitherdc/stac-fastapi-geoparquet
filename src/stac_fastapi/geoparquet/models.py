@@ -49,7 +49,9 @@ ITEM_EXTENSIONS = [
 # ---------------------------------------------------------------------------
 
 collection_search_extensions = [
-    CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
+    CollectionSearchFilterExtension(
+        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+    ),
     FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
     FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
     QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
@@ -73,6 +75,7 @@ PostSearchRequestModel = stac_fastapi.api.models.create_post_request_model(
 ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=ItemCollectionUri, extensions=ITEM_EXTENSIONS
 )
+
 
 def _q_converter(
     val: Annotated[
@@ -114,7 +117,9 @@ class CollectionSearchRequest(APIRequest):
             openapi_examples={
                 "user-provided": {"value": None},
                 "datetime": {"value": "2018-02-12T23:20:50Z"},
-                "closed-interval": {"value": "2018-02-12T00:00:00Z/2018-03-18T12:31:12Z"},
+                "closed-interval": {
+                    "value": "2018-02-12T00:00:00Z/2018-03-18T12:31:12Z"
+                },
                 "open-interval-from": {"value": "2018-02-12T00:00:00Z/.."},
                 "open-interval-to": {"value": "../2018-03-18T12:31:12Z"},
             },

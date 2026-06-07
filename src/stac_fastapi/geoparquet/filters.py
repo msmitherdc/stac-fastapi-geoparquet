@@ -152,7 +152,9 @@ def _extract_queryable_properties(
             schema_fragment = _STAC_CORE_QUERYABLES["collection"].copy()
         else:
             # Use title-cased column name as a human-readable title
-            schema_fragment["title"] = col_name.replace(":", ": ").replace("_", " ").title()
+            schema_fragment["title"] = (
+                col_name.replace(":", ": ").replace("_", " ").title()
+            )
 
         properties[col_name] = schema_fragment
 
@@ -231,8 +233,9 @@ class FiltersClient(BaseFiltersClient):
 
             return _extract_queryable_properties(rows)
         except Exception:
-                # If schema introspection fails fall back to the STAC core queryables
-                return dict(_STAC_CORE_QUERYABLES)
+            # If schema introspection fails fall back to the STAC core queryables
+            return dict(_STAC_CORE_QUERYABLES)
+
 
 def _build_queryables_doc(
     *,
@@ -244,9 +247,7 @@ def _build_queryables_doc(
     if collection_id is not None:
         doc_id = f"{base_url}/collections/{collection_id}/queryables"
         title = f"Queryables for {collection_id}"
-        description = (
-            f"Filterable properties available for items in collection '{collection_id}'."
-        )
+        description = f"Filterable properties available for items in collection '{collection_id}'."
     else:
         doc_id = f"{base_url}/queryables"
         title = "Global Queryables"
