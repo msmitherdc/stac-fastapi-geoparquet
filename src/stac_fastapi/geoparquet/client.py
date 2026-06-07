@@ -317,7 +317,7 @@ class Client(BaseCoreClient):
         def _has_access(coll: Collection | None, atl: list[int]) -> bool:
             if coll is None:
                 return False
-            return coll.get("access_tag_id") in atl  # type: ignore[typeddict-item]
+            return coll.get("access_tag_id") in atl
 
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
