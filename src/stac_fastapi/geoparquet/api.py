@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,7 +14,8 @@ from stac_fastapi.api.app import StacApi
 
 from .client import Client
 from .models import (
-    EXTENSIONS,
+    ITEM_EXTENSIONS,
+    CollectionSearchRequest,
     GetSearchRequestModel,
     ItemsGetRequestModel,
     PostSearchRequestModel,
@@ -42,6 +44,11 @@ class State(TypedDict):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     client = app.extra["duckdb_client"]
+    s3end = os.getenv("AWS_S3_ENDPOINT")
+    if s3end:
+        client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+    else:
+        client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
     settings: Settings = app.extra["settings"]
     collections = app.extra["collections"]
     collection_dict = dict()
@@ -78,11 +85,17 @@ def create(
 ) -> StacApi:
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
+        s3end = os.getenv("AWS_S3_ENDPOINT")
+        if s3end:
+            duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+        else:
+            duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+        duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
-        settings = Settings(
-            stac_fastapi_landing_id="stac-fastapi-geoparquet",
-            stac_fastapi_title="stac-fastapi-geoparquet",
-            stac_fastapi_description="A stac-fastapi server backend by stac-geoparquet",
+         settings = Settings(
+            stac_fastapi_landing_id=os.getenv("STAC_FASTAPI_LANDING_ID"),
+            stac_fastapi_title=os.getenv("STAC_FASTAPI_TITLE"),
+            stac_fastapi_description=os.getenv("STAC_FASTAPI_DESCRIPTION"),
         )
 
     if settings.stac_fastapi_collections_href:
@@ -118,11 +131,13 @@ def create(
             settings=settings,
             collections=collections,
             duckdb_client=duckdb_client,
+            redirect_slashes=False,
         ),
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
-        extensions=EXTENSIONS,
+        collections_get_request_model=CollectionSearchRequest,
+        extensions=ITEM_EXTENSIONS,
     )
     return api
 
