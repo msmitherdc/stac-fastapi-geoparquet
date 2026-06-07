@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from rustac import DuckdbClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.types.errors import NotFoundError
 from starlette.requests import Request

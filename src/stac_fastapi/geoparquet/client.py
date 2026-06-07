@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from rustac import DuckdbClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
@@ -34,7 +34,7 @@ class Client(BaseCoreClient):
         collections = {
             cname: coll
             for cname, coll in collections.items()
-            if collections[cname].get("access_tag_id") in atl  # type: ignore[typeddict-item]
+            if collections[cname].get("access_tag_id") in atl
         }
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
@@ -313,6 +313,12 @@ class Client(BaseCoreClient):
         search: BaseSearchPostRequest,
         **kwargs: Any,
     ) -> ItemCollection:
+        
+        def _has_access(coll: Collection | None, atl: list[int]) -> bool:
+            if coll is None:
+                return False
+            return coll.get("access_tag_id") in atl  # type: ignore[typeddict-item]
+        
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
 
@@ -337,14 +343,14 @@ class Client(BaseCoreClient):
             collections = [
                 c
                 for c in search.collections
-                if all_collections.get(c, {}).get("access_tag_id") in atl
+                if _has_access(all_collections.get(c), atl)
             ]
         else:
             # No collections specified — use every href the user can access.
             collections = [
                 c
                 for c in hrefs.keys()
-                if all_collections.get(c, {}).get("access_tag_id") in atl
+                if _has_access(all_collections.get(c), atl)
             ]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)

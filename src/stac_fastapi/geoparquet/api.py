@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 import obstore.store
 import pystac.utils
 from fastapi import FastAPI, HTTPException
-from rustac import DuckdbClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.api.app import StacApi
 
 from .client import Client
