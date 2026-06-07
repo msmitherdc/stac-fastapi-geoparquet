@@ -34,12 +34,12 @@ class Client(BaseCoreClient):
         collections = {
             cname: coll
             for cname, coll in collections.items()
-            if collections[cname]["access_tag_id"] in atl
+            if collections[cname].get("access_tag_id") in atl  # type: ignore[typeddict-item]
         }
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
         ids: list[str] | None = kwargs.pop("ids", None)
-        bbox: tuple | None = kwargs.pop("bbox", None)
+        bbox: tuple[float, float, float, float] | None = kwargs.pop("bbox", None)
         datetime_str: str | None = kwargs.pop("datetime", None)
         q: list[str] | None = kwargs.pop("q", None)
         limit: int | None = kwargs.pop("limit", None)
@@ -438,7 +438,7 @@ class Client(BaseCoreClient):
                 )
 
                 # log filters
-                print(collection_search_dict)
+                # print(collection_search_dict)
 
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
