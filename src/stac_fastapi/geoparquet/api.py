@@ -102,8 +102,8 @@ def create(
     if settings is None:
         settings = Settings(
             stac_fastapi_landing_id=os.getenv("STAC_FASTAPI_LANDING_ID", ""),
-            stac_fastapi_title=os.getenv("STAC_FASTAPI_TITLE",""),
-            stac_fastapi_description=os.getenv("STAC_FASTAPI_DESCRIPTION",""),
+            stac_fastapi_title=os.getenv("STAC_FASTAPI_TITLE", ""),
+            stac_fastapi_description=os.getenv("STAC_FASTAPI_DESCRIPTION", ""),
         )
 
     if settings.stac_fastapi_collections_href:
