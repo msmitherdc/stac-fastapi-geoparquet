@@ -76,6 +76,7 @@ filterwarnings = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
 
 [build-system]
 requires = ["setuptools"]
