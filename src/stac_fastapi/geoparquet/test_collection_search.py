@@ -12,10 +12,12 @@ ALL_IDS = {"naip", "naip-10", "openaerialmap-10", "openaerialmap"}
 # ---------------------------------------------------------------------------
 
 
-def _get_collections(client: TestClient, **params) -> dict:
+def _get_collections(client: TestClient, **params: Any) -> dict[str, Any]:
     response = client.get("/collections", params=params)
     assert response.status_code == 200, response.text
-    return response.json()
+    result = response.json()
+    assert isinstance(result, dict)
+    return result
 
 
 # ---------------------------------------------------------------------------
