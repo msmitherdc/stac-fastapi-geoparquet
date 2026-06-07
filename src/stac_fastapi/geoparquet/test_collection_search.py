@@ -1,8 +1,8 @@
 """Tests for GET /collections collection search parameters."""
 
 import urllib.parse
-
 from typing import Any
+
 from fastapi.testclient import TestClient
 
 # IDs present in data/collections.json
