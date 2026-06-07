@@ -3,11 +3,9 @@
 import urllib.parse
 
 from fastapi.testclient import TestClient
-from typing import Any
 
 # IDs present in data/collections.json
 ALL_IDS = {"naip", "naip-10", "openaerialmap-10", "openaerialmap"}
-
 
 # ---------------------------------------------------------------------------
 # Helper
