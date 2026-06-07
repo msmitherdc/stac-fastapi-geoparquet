@@ -319,7 +319,7 @@ class Client(BaseCoreClient):
         if s3end:
             client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
         else:
-            client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+            client.execute("CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
 
         # Resolve the access tag list early — used both to gate the collections
         # list and to inject the CQL filter below.

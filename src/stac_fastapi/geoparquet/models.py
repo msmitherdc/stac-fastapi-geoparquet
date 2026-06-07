@@ -4,28 +4,26 @@ import attr
 import stac_fastapi.api.models
 from fastapi import Query
 from stac_fastapi.api.models import ItemCollectionUri
-from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
-from stac_fastapi.extensions.core.fields import FieldsExtension
-from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
-from stac_fastapi.extensions.core.sort import SortExtension
-from stac_fastapi.extensions.core.query import QueryExtension
-
 from stac_fastapi.extensions.core import (
     CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
 )
+from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
+from stac_fastapi.extensions.core.fields import (
+    FieldsConformanceClasses,
+    FieldsExtension,
+)
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
+from stac_fastapi.extensions.core.query import QueryConformanceClasses, QueryExtension
+from stac_fastapi.extensions.core.sort import SortConformanceClasses, SortExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox
 
 from .filters import FiltersClient
 from .search import FixedSearchGetRequest, _bbox_converter, _ids_converter
-
-from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.core.query import QueryConformanceClasses
-from stac_fastapi.extensions.core.sort import SortConformanceClasses
 
 # ---------------------------------------------------------------------------
 # Item-search extensions (used for GET /search, POST /search, GET /items)

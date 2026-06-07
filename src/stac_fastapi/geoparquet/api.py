@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     if s3end:
         client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
     else:
-        client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+        client.execute("CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
     settings: Settings = app.extra["settings"]
     collections = app.extra["collections"]
     collection_dict = dict()
@@ -89,7 +89,7 @@ def create(
         if s3end:
             duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
         else:
-            duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+            duckdb_client.execute("CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
          settings = Settings(

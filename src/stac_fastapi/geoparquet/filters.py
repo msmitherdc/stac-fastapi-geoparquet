@@ -5,13 +5,12 @@ Implements ``/queryables`` and ``/collections/{collection_id}/queryables``
 
 from __future__ import annotations
 
-import os
 from typing import Any, cast
 
+from rustac import DuckdbClient
 from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.types.errors import NotFoundError
 from starlette.requests import Request
-from rustac import DuckdbClient
 
 # ---------------------------------------------------------------------------
 # DuckDB type → JSON-Schema type mapping (AI written)
