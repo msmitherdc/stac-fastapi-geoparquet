@@ -13,7 +13,13 @@ NAIP_PATH = Path(__file__).parents[1] / "data" / "naip.parquet"
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    settings = Settings(stac_fastapi_collections_href=str(COLLECTIONS_PATH))
+
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_collections_href=str(COLLECTIONS_PATH),
+    )
     api = stac_fastapi.geoparquet.api.create(settings)
     with TestClient(api.app) as client:
         yield client
