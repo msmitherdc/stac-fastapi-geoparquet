@@ -113,6 +113,26 @@ _STAC_CORE_QUERYABLES: dict[str, dict[str, Any]] = {
         "type": "object",
         "format": "geojson-geometry",
     },
+    "data_program_id": {
+        "type": "integer", 
+        "title": "Data Program Id",
+        "description": "The GRiD Data Program Unique ID"
+    },
+    "datatype_name": {
+        "type": "string", 
+        "title": "Datatype Name",
+        "description": "The specific datatype of the items in this collection"
+    },
+    "datatype_category_name": {
+        "type": "string", 
+        "title": "Datatype Category Name",
+        "description": "The general category of the datatypes"
+    },
+    "dataclass": {
+        "type": "string", 
+        "title": "Dataclass",
+        "description": "The class of the data. Raster / Vector / Pointcloud / Mesh"
+    },
 }
 
 # Columns that are internal implementation details, not useful as queryables

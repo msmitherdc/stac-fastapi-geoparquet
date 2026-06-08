@@ -28,13 +28,15 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
 
         # ---- access-tag filtering (grid-specific) -------------------------
-        atl = dict(request.headers)["x-grid-accesstags"]
-        atl = ast.literal_eval(atl)
+        atl = [1]
+        atlh = dict(request.headers).get("x-grid-accesstags")
+        if atlh:
+            atl = ast.literal_eval(atlh)
         collections = cast(dict[str, Collection], request.state.collections)
         collections = {
             cname: coll
             for cname, coll in collections.items()
-            if collections[cname].get("access_tag_id") in atl
+            if collections[cname].get("access_tag_id", 1) in atl
         }
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
@@ -201,7 +203,10 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
         collections = cast(dict[str, Collection], request.state.collections)
         if collection := collections.get(collection_id):
-            atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+            atl = [1]
+            atlh = dict(request.headers).get("x-grid-accesstags")
+            if atlh:
+                atl = ast.literal_eval(atlh)
             if collection.get("access_tag_id") not in atl:
                 raise NotFoundError(f"Collection does not exist: {collection_id}")
             return collection_with_links(collection, request)
@@ -315,7 +320,7 @@ class Client(BaseCoreClient):
     ) -> ItemCollection:
 
         def _has_access(coll: Collection | None, atl: list[int]) -> bool:
-            if coll is None:
+            if atl is None or coll is None:
                 return False
             return coll.get("access_tag_id") in atl
 
@@ -336,7 +341,10 @@ class Client(BaseCoreClient):
 
         # Resolve the access tag list early — used both to gate the collections
         # list and to inject the CQL filter below.
-        atl = ast.literal_eval(dict(request.headers)["x-grid-accesstags"])
+        atl = [1]
+        atlh = dict(request.headers).get("x-grid-accesstags")
+        if atlh:
+            atl = ast.literal_eval(atlh)
         all_collections = cast(dict[str, Collection], request.state.collections)
 
         if search.collections:
