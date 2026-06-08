@@ -4,28 +4,26 @@ import attr
 import stac_fastapi.api.models
 from fastapi import Query
 from stac_fastapi.api.models import ItemCollectionUri
-from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
-from stac_fastapi.extensions.core.fields import FieldsExtension
-from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
-from stac_fastapi.extensions.core.sort import SortExtension
-from stac_fastapi.extensions.core.query import QueryExtension
-
 from stac_fastapi.extensions.core import (
     CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
 )
+from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
+from stac_fastapi.extensions.core.fields import (
+    FieldsConformanceClasses,
+    FieldsExtension,
+)
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
+from stac_fastapi.extensions.core.query import QueryConformanceClasses, QueryExtension
+from stac_fastapi.extensions.core.sort import SortConformanceClasses, SortExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox
 
 from .filters import FiltersClient
 from .search import FixedSearchGetRequest, _bbox_converter, _ids_converter
-
-from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.core.query import QueryConformanceClasses
-from stac_fastapi.extensions.core.sort import SortConformanceClasses
 
 # ---------------------------------------------------------------------------
 # Item-search extensions (used for GET /search, POST /search, GET /items)
@@ -51,7 +49,9 @@ ITEM_EXTENSIONS = [
 # ---------------------------------------------------------------------------
 
 collection_search_extensions = [
-    CollectionSearchFilterExtension(conformance_classes=[FilterConformanceClasses.COLLECTIONS]),
+    CollectionSearchFilterExtension(
+        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+    ),
     FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
     FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
     QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
@@ -75,6 +75,7 @@ PostSearchRequestModel = stac_fastapi.api.models.create_post_request_model(
 ItemsGetRequestModel = stac_fastapi.api.models.create_get_request_model(
     base_model=ItemCollectionUri, extensions=ITEM_EXTENSIONS
 )
+
 
 def _q_converter(
     val: Annotated[
@@ -116,7 +117,9 @@ class CollectionSearchRequest(APIRequest):
             openapi_examples={
                 "user-provided": {"value": None},
                 "datetime": {"value": "2018-02-12T23:20:50Z"},
-                "closed-interval": {"value": "2018-02-12T00:00:00Z/2018-03-18T12:31:12Z"},
+                "closed-interval": {
+                    "value": "2018-02-12T00:00:00Z/2018-03-18T12:31:12Z"
+                },
                 "open-interval-from": {"value": "2018-02-12T00:00:00Z/.."},
                 "open-interval-to": {"value": "../2018-03-18T12:31:12Z"},
             },

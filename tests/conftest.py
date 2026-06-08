@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 
 import stac_fastapi.geoparquet.api
 from stac_fastapi.geoparquet import Settings
@@ -13,7 +14,13 @@ NAIP_PATH = Path(__file__).parents[1] / "data" / "naip.parquet"
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    settings = Settings(stac_fastapi_collections_href=str(COLLECTIONS_PATH))
-    api = stac_fastapi.geoparquet.api.create(settings)
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_collections_href=str(COLLECTIONS_PATH),
+    )
+    duckdb_client = DuckdbClient()  # no S3 secret, fine for local parquet files
+    api = stac_fastapi.geoparquet.api.create(settings, duckdb_client=duckdb_client)
     with TestClient(api.app) as client:
         yield client

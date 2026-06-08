@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from rustac import DuckdbClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 
 import stac_fastapi.geoparquet.api
 from stac_fastapi.geoparquet import Settings

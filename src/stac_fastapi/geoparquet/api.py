@@ -9,8 +9,7 @@ from typing import Any, TypedDict
 import obstore.store
 import pystac.utils
 from fastapi import FastAPI, HTTPException
-from fastapi.routing import APIRouter
-from rustac import DuckdbClient
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.api.app import StacApi
 
 from .client import Client
@@ -46,10 +45,16 @@ class State(TypedDict):
 async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     client = app.extra["duckdb_client"]
     s3end = os.getenv("AWS_S3_ENDPOINT")
-    if s3end:
-        client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
-    else:
-        client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+    skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
+    if not skip_s3:
+        if s3end:
+            client.execute(
+                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+            )
+        else:
+            client.execute(
+                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+            )
     settings: Settings = app.extra["settings"]
     collections = app.extra["collections"]
     collection_dict = dict()
@@ -88,15 +93,19 @@ def create(
         duckdb_client = DuckdbClient()
         s3end = os.getenv("AWS_S3_ENDPOINT")
         if s3end:
-            duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');")
+            duckdb_client.execute(
+                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+            )
         else:
-            duckdb_client.execute(f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);")
+            duckdb_client.execute(
+                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+            )
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
-         settings = Settings(
-            stac_fastapi_landing_id=os.getenv("STAC_FASTAPI_LANDING_ID"),
-            stac_fastapi_title=os.getenv("STAC_FASTAPI_TITLE"),
-            stac_fastapi_description=os.getenv("STAC_FASTAPI_DESCRIPTION"),
+        settings = Settings(
+            stac_fastapi_landing_id=os.getenv("STAC_FASTAPI_LANDING_ID", ""),
+            stac_fastapi_title=os.getenv("STAC_FASTAPI_TITLE", ""),
+            stac_fastapi_description=os.getenv("STAC_FASTAPI_DESCRIPTION", ""),
         )
 
     if settings.stac_fastapi_collections_href:

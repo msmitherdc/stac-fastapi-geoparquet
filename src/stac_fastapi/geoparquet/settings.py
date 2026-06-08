@@ -13,10 +13,7 @@ class Settings(ApiSettings):
     """The href of a stac-geoparquet file.
 
     The items in the file will be used to auto-generate one or more collections."""
-    
-    stac_fastapi_landing_id: str | None = None
-    
-    stac_fastapi_title: str | None = None
-    
-    stac_fastapi_description: str | None = None
-    
+
+    stac_fastapi_landing_id: str
+    stac_fastapi_title: str
+    stac_fastapi_description: str

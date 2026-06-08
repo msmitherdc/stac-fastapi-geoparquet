@@ -13,17 +13,15 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.11"
-          - "3.12"
-          - "3.13"
           - "3.14"
     env:
       DUCKDB_LIB_DIR: /opt/duckdb
       LD_LIBRARY_PATH: /opt/duckdb
+      STAC_FASTAPI_SKIP_S3_SECRET: "true"
     steps:
-      - uses: actions/checkout@v6
-      - uses: Swatinem/rust-cache@v2
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Lint
@@ -34,8 +32,8 @@ jobs:
         run: scripts/validate
       - name: Build docs
         run: uv run mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v4
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.11' }}
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.14' }}
         with:
           path: site/
   deploy-docs:
@@ -50,5 +48,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
         id: deployment

@@ -5,13 +5,12 @@ Implements ``/queryables`` and ``/collections/{collection_id}/queryables``
 
 from __future__ import annotations
 
-import os
 from typing import Any, cast
 
+from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.types.errors import NotFoundError
 from starlette.requests import Request
-from rustac import DuckdbClient
 
 # ---------------------------------------------------------------------------
 # DuckDB type → JSON-Schema type mapping (AI written)
@@ -114,6 +113,26 @@ _STAC_CORE_QUERYABLES: dict[str, dict[str, Any]] = {
         "type": "object",
         "format": "geojson-geometry",
     },
+    "data_program_id": {
+        "type": "integer", 
+        "title": "Data Program Id",
+        "description": "The GRiD Data Program Unique ID"
+    },
+    "datatype_name": {
+        "type": "string", 
+        "title": "Datatype Name",
+        "description": "The specific datatype of the items in this collection"
+    },
+    "datatype_category_name": {
+        "type": "string", 
+        "title": "Datatype Category Name",
+        "description": "The general category of the datatypes"
+    },
+    "dataclass": {
+        "type": "string", 
+        "title": "Dataclass",
+        "description": "The class of the data. Raster / Vector / Pointcloud / Mesh"
+    },
 }
 
 # Columns that are internal implementation details, not useful as queryables
@@ -153,7 +172,9 @@ def _extract_queryable_properties(
             schema_fragment = _STAC_CORE_QUERYABLES["collection"].copy()
         else:
             # Use title-cased column name as a human-readable title
-            schema_fragment["title"] = col_name.replace(":", ": ").replace("_", " ").title()
+            schema_fragment["title"] = (
+                col_name.replace(":", ": ").replace("_", " ").title()
+            )
 
         properties[col_name] = schema_fragment
 
@@ -232,8 +253,9 @@ class FiltersClient(BaseFiltersClient):
 
             return _extract_queryable_properties(rows)
         except Exception:
-                # If schema introspection fails fall back to the STAC core queryables
-                return dict(_STAC_CORE_QUERYABLES)
+            # If schema introspection fails fall back to the STAC core queryables
+            return dict(_STAC_CORE_QUERYABLES)
+
 
 def _build_queryables_doc(
     *,
@@ -245,9 +267,7 @@ def _build_queryables_doc(
     if collection_id is not None:
         doc_id = f"{base_url}/collections/{collection_id}/queryables"
         title = f"Queryables for {collection_id}"
-        description = (
-            f"Filterable properties available for items in collection '{collection_id}'."
-        )
+        description = f"Filterable properties available for items in collection '{collection_id}'."
     else:
         doc_id = f"{base_url}/queryables"
         title = "Global Queryables"
