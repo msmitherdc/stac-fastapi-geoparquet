@@ -365,9 +365,11 @@ class Client(BaseCoreClient):
         search_dict.update(**kwargs)
 
         if search_dict.get("query") in (None,"", 'None'):
-            search_dict.pop("query")
+            if search_dict.get('query') is not None:
+                search_dict.pop("query")
         if search_dict.get("q") in (None,"", 'None'):
-            search_dict.pop("q")
+            if search_dict.get('q') is not None:
+                search_dict.pop("q")
 
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
