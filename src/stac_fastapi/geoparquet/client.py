@@ -364,10 +364,9 @@ class Client(BaseCoreClient):
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
 
-        if search_dict.get("query") is None:
+        if search_dict.get("query") in (None,""):
             search_dict.pop("query")
-            
-        if search_dict.get("q") is None:
+        if search_dict.get("q") in (None,""):
             search_dict.pop("q")
 
         print(search_dict)
