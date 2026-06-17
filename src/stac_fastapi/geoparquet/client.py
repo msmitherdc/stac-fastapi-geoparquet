@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import urllib.parse
+import yarl
 from datetime import datetime as dt
 from typing import Any, cast
 
@@ -364,11 +365,11 @@ class Client(BaseCoreClient):
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
 
-        # Explicitly clean/pop out empty q, query parameters to avoid compounding errors
-        if not search_dict.get("query") or search_dict.get("query") in (None, "None", "[None]", "['None']", '["None"]'):
-            search_dict.pop("query", None)
-        if not search_dict.get("q") or search_dict.get("q") in (None, "None", "[None]", "['None']", '["None"]'):
-            search_dict.pop("q", None)
+        # # Explicitly clean/pop out empty q, query parameters to avoid compounding errors
+        # if not search_dict.get("query") or search_dict.get("query") in (None, "None", "[None]", "['None']", '["None"]'):
+        #     search_dict.pop("query", None)
+        # if not search_dict.get("q") or search_dict.get("q") in (None, "None", "[None]", "['None']", '["None"]'):
+        #     search_dict.pop("q", None)
 
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
@@ -499,7 +500,7 @@ class Client(BaseCoreClient):
                     next_search["bbox"] = ",".join(map(str, bbox))
                 links.append(
                     {
-                        "href": url + "?" + urllib.parse.urlencode(next_search),
+                        "href": yarl.URL(url).with_query(next_search),
                         "rel": "next",
                         "type": "application/geo+json",
                         "method": "GET",
