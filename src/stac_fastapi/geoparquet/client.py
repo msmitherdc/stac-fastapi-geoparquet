@@ -364,6 +364,12 @@ class Client(BaseCoreClient):
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
 
+        # # Explicitly clean/pop out empty q, query parameters to avoid compounding errors
+        # if not search_dict.get("query") or search_dict.get("query") in (None, "None", "[None]", "['None']", '["None"]'):
+        #     search_dict.pop("query", None)
+        # if not search_dict.get("q") or search_dict.get("q") in (None, "None", "[None]", "['None']", '["None"]'):
+        #     search_dict.pop("q", None)
+
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
             search_dict["filter"] = filter_expr
@@ -396,11 +402,7 @@ class Client(BaseCoreClient):
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
 
-        # Inject access_tag_id as a CQL filter (defense-in-depth: the collections
-        # list above already restricts to permitted hrefs, but this ensures the
-        # filter is also applied at the row level inside each parquet file).
-        # add in AT List filtering, combining with any existing filter if necessary
-        # do it all in cql2-text or cql2-json depending on filter_lang
+        # Inject access_tag_id as a CQL filter
         if filter_lang:
             if filter_lang == "cql2-text":
                 if search_dict.get("filter"):
@@ -434,7 +436,6 @@ class Client(BaseCoreClient):
                 f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
             )
             filter_lang = "cql2-text"
-        # end grid at filtering
 
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
@@ -451,13 +452,8 @@ class Client(BaseCoreClient):
                     }
                 )
 
-                # log filters
-                # print(collection_search_dict)
-
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
-                    # Careful ... we aren't updating `collection_items` with the
-                    # correct links.
                     items.append(
                         self.item_with_links(cast(Item, item), request, collection)
                     )
@@ -501,9 +497,17 @@ class Client(BaseCoreClient):
                     next_search["collections"] = ",".join(collections)
                 if bbox := next_search.get("bbox"):
                     next_search["bbox"] = ",".join(map(str, bbox))
+
+                # Filter out all variations of None/empty fields safely
+                clean_next_search = {
+                    k: v for k, v in next_search.items()
+                    if v is not None and v not in ("", "None", "[None]", "['None']", '["None"]')
+                }
+
+                #  Encode using doseq=True so lists/sequences are properly formatted
                 links.append(
                     {
-                        "href": url + "?" + urllib.parse.urlencode(next_search),
+                        "href": url + "?" + urllib.parse.urlencode(clean_next_search, doseq=True),
                         "rel": "next",
                         "type": "application/geo+json",
                         "method": "GET",
