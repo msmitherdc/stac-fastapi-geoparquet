@@ -498,9 +498,17 @@ class Client(BaseCoreClient):
                     next_search["collections"] = ",".join(collections)
                 if bbox := next_search.get("bbox"):
                     next_search["bbox"] = ",".join(map(str, bbox))
+
+                # Filter out all variations of None/empty fields safely
+                clean_next_search = {
+                    k: v for k, v in next_search.items()
+                    if v is not None and v not in ("", "None", "[None]", "['None']", '["None"]')
+                }
+
+                #  Encode using doseq=True so lists/sequences are properly formatted
                 links.append(
                     {
-                        "href": yarl.URL(url).with_query(next_search),
+                        "href": url + "?" + urllib.parse.urlencode(clean_next_search, doseq=True),
                         "rel": "next",
                         "type": "application/geo+json",
                         "method": "GET",
