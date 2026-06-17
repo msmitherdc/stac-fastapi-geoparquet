@@ -3,7 +3,6 @@ import copy
 import json
 import os
 import urllib.parse
-import yarl
 from datetime import datetime as dt
 from typing import Any, cast
 
