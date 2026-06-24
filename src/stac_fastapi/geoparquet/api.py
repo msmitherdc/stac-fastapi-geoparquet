@@ -149,7 +149,7 @@ def create(
     async def custom_swagger_ui_html() -> HTMLResponse:
         return get_swagger_ui_html(
             openapi_url=app_instance.openapi_url or "/openapi.json",
-            title=app_instance.title + " - Swagger UI",
+            title=app_instance.title + " - OpenAPI UI",
             oauth2_redirect_url=app_instance.swagger_ui_oauth2_redirect_url,
             swagger_js_url="/static/swagger-ui-bundle.js",
             swagger_css_url="/static/swagger-ui.css",
