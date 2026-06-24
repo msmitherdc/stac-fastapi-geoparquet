@@ -9,5 +9,4 @@ app = api.app
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(BASE_DIR, "static")
 
-# Mount the static directory to serve local assets
-app.mount("/static", StaticFiles(directory="/app/static/"), name="static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
