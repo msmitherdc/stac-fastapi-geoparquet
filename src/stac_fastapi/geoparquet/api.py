@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 import obstore.store
 import pystac.utils
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from rustac import DuckdbClient  # type: ignore[attr-defined]
@@ -146,13 +146,21 @@ def create(
 
     # 2. Add the custom route to serve the swagger UI with local CDN alternatives
     @app_instance.get("/api.html", include_in_schema=False, name="swagger_ui_html")
-    async def custom_swagger_ui_html() -> HTMLResponse:
+    async def custom_swagger_ui_html(req: Request) -> HTMLResponse:
+        # Dynamically extract root_path from the incoming request scope
+        root_path = req.scope.get("root_path", "").rstrip("/")
+        
+        openapi_url = root_path + app_instance.openapi_url
+        oauth2_redirect_url = app_instance.swagger_ui_oauth2_redirect_url
+        if oauth2_redirect_url:
+            oauth2_redirect_url = root_path + oauth2_redirect_url
+
         return get_swagger_ui_html(
-            openapi_url=app_instance.openapi_url,
+            openapi_url=openapi_url,
             title=app_instance.title + " - OpenAPI UI",
-            oauth2_redirect_url=app_instance.swagger_ui_oauth2_redirect_url,
-            swagger_js_url=app_instance.root_path + "/static/swagger-ui-bundle.js",
-            swagger_css_url=app_instance.root_path + "/static/swagger-ui.css",
+            oauth2_redirect_url=oauth2_redirect_url,
+            swagger_js_url=root_path + "/static/swagger-ui-bundle.js",
+            swagger_css_url=root_path + "/static/swagger-ui.css",
         )
 
     api = StacApi(
