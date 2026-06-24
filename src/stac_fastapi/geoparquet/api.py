@@ -145,10 +145,10 @@ def create(
     )
 
     # 2. Add the custom route to serve the swagger UI with local CDN alternatives
-    @app_instance.get("/docs", include_in_schema=False, name="swagger_ui_html")
+    @app_instance.get("/api.html", include_in_schema=False, name="swagger_ui_html")
     async def custom_swagger_ui_html() -> HTMLResponse:
         return get_swagger_ui_html(
-            openapi_url=app_instance.openapi_url or "/openapi.json",
+            openapi_url=app_instance.openapi_url,
             title=app_instance.title + " - OpenAPI UI",
             oauth2_redirect_url=app_instance.swagger_ui_oauth2_redirect_url,
             swagger_js_url="/static/swagger-ui-bundle.js",
