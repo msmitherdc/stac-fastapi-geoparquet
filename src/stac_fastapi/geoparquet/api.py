@@ -151,8 +151,8 @@ def create(
             openapi_url=app_instance.openapi_url,
             title=app_instance.title + " - OpenAPI UI",
             oauth2_redirect_url=app_instance.swagger_ui_oauth2_redirect_url,
-            swagger_js_url="/static/swagger-ui-bundle.js",
-            swagger_css_url="/static/swagger-ui.css",
+            swagger_js_url=app_instance.root_path + "/static/swagger-ui-bundle.js",
+            swagger_css_url=app_instance.root_path + "/static/swagger-ui.css",
         )
 
     api = StacApi(
