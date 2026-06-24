@@ -91,3 +91,6 @@ include = ["stac_fastapi.geoparquet"]
 
 [tool.setuptools.package-data]
 "stac_fastapi.geoparquet" = ["static/*", "static/**/*"]
+
+[tool.setuptools]
+include-package-data = true
