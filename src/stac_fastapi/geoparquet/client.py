@@ -20,6 +20,86 @@ from .models import PostSearchRequestModel
 
 DEFAULT_LIMIT = 10_000
 
+# rustac's DuckdbClient does not implement the STAC Query Extension's `query`
+# parameter directly (it raises `RustacError: query is not implemented`), so
+# it must be translated into an equivalent CQL2 filter before being forwarded.
+_QUERY_EXT_OPERATORS = {
+    "eq": "=",
+    "neq": "<>",
+    "lt": "<",
+    "lte": "<=",
+    "gt": ">",
+    "gte": ">=",
+}
+
+
+def _cql2_text_literal(value: Any) -> str:
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if value is None:
+        return "NULL"
+    return str(value)
+
+
+def _query_ext_to_cql2_text(query: dict[str, dict[str, Any]]) -> str:
+    """Translate a STAC Query Extension object into a CQL2-text filter."""
+    clauses = []
+    for prop, ops in query.items():
+        for op, value in ops.items():
+            if op in _QUERY_EXT_OPERATORS:
+                clauses.append(
+                    f"{prop} {_QUERY_EXT_OPERATORS[op]} {_cql2_text_literal(value)}"
+                )
+            elif op == "in":
+                values = ", ".join(_cql2_text_literal(v) for v in value)
+                clauses.append(f"{prop} IN ({values})")
+            elif op == "startsWith":
+                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'{value}%')}")
+            elif op == "endsWith":
+                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'%{value}')}")
+            elif op == "contains":
+                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'%{value}%')}")
+            else:
+                raise HTTPException(400, f"Unsupported query operator: {op!r}")
+    return " AND ".join(clauses)
+
+
+def _query_ext_to_cql2_json(query: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Translate a STAC Query Extension object into a CQL2-json filter."""
+    clauses: list[dict[str, Any]] = []
+    for prop, ops in query.items():
+        for op, value in ops.items():
+            if op in _QUERY_EXT_OPERATORS:
+                clauses.append(
+                    {
+                        "op": _QUERY_EXT_OPERATORS[op],
+                        "args": [{"property": prop}, value],
+                    }
+                )
+            elif op == "in":
+                clauses.append(
+                    {"op": "in", "args": [{"property": prop}, list(value)]}
+                )
+            elif op == "startsWith":
+                clauses.append(
+                    {"op": "like", "args": [{"property": prop}, f"{value}%"]}
+                )
+            elif op == "endsWith":
+                clauses.append(
+                    {"op": "like", "args": [{"property": prop}, f"%{value}"]}
+                )
+            elif op == "contains":
+                clauses.append(
+                    {"op": "like", "args": [{"property": prop}, f"%{value}%"]}
+                )
+            else:
+                raise HTTPException(400, f"Unsupported query operator: {op!r}")
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"op": "and", "args": clauses}
+
 
 class Client(BaseCoreClient):
     """A stac-fastapi-geoparquet client."""
@@ -364,12 +444,6 @@ class Client(BaseCoreClient):
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
 
-        # # Explicitly clean/pop out empty q, query parameters to avoid compounding errors
-        # if not search_dict.get("query") or search_dict.get("query") in (None, "None", "[None]", "['None']", '["None"]'):
-        #     search_dict.pop("query", None)
-        # if not search_dict.get("q") or search_dict.get("q") in (None, "None", "[None]", "['None']", '["None"]'):
-        #     search_dict.pop("q", None)
-
         search_dict.pop("filter_crs", None)
         if filter_expr := search_dict.pop("filter_expr", None):
             search_dict["filter"] = filter_expr
@@ -401,6 +475,31 @@ class Client(BaseCoreClient):
                 raise HTTPException(400, f"unexpected fields type: {fields}")
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
+
+        # Translate the Query Extension's `query` into an equivalent CQL2
+        # filter — rustac's DuckdbClient only understands `filter`/CQL2 and
+        # raises RustacError("query is not implemented") if `query` reaches it.
+        if query := search_dict.pop("query", None):
+            filter_lang = filter_lang or "cql2-text"
+            if filter_lang == "cql2-text":
+                query_filter: Any = _query_ext_to_cql2_text(query)
+                search_dict["filter"] = (
+                    f"({search_dict['filter']}) AND ({query_filter})"
+                    if search_dict.get("filter")
+                    else query_filter
+                )
+            elif filter_lang == "cql2-json":
+                query_filter = _query_ext_to_cql2_json(query)
+                search_dict["filter"] = (
+                    {"op": "and", "args": [search_dict["filter"], query_filter]}
+                    if search_dict.get("filter")
+                    else query_filter
+                )
+            else:
+                raise HTTPException(
+                    400,
+                    f"Unsupported filter-lang: {filter_lang!r} for the 'query' extension.",
+                )
 
         # Inject access_tag_id as a CQL filter
         if filter_lang:
