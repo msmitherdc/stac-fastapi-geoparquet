@@ -107,6 +107,36 @@ def test_filter_post(client: TestClient) -> None:
     assert len(response.json()["features"]) == 0
 
 
+def test_query_ext_post(client: TestClient) -> None:
+    # https://github.com/msmitherdc/stac-fastapi-geoparquet - `query` was
+    # forwarded straight to rustac's DuckdbClient, which doesn't implement it
+    # (`RustacError: query is not implemented`) and crashed the request.
+    params = {"limit": 1, "query": {"naip:year": {"eq": "2022"}}}
+    response = client.post("/search", json=params)
+    response.raise_for_status()
+    assert len(response.json()["features"]) == 1
+    assert response.json()["features"][0]["properties"]["naip:year"] == "2022"
+
+    params = {"limit": 1, "query": {"naip:year": {"eq": "notayear"}}}
+    response = client.post("/search", json=params)
+    response.raise_for_status()
+    assert not response.json()["features"]
+
+
+def test_query_ext_combines_with_filter(client: TestClient) -> None:
+    params = {
+        "limit": 10,
+        "filter": {"op": "=", "args": [{"property": "naip:year"}, "2022"]},
+        "query": {"naip:state": {"eq": "ne"}},
+    }
+    response = client.post("/search", json=params)
+    response.raise_for_status()
+    assert response.json()["features"]
+    for feature in response.json()["features"]:
+        assert feature["properties"]["naip:year"] == "2022"
+        assert feature["properties"]["naip:state"] == "ne"
+
+
 def test_paging_filter(client: TestClient) -> None:
     params = {"limit": 1, "filter": "naip:year='2022'"}
     response = client.get("/search", params=params)
@@ -132,7 +162,7 @@ def test_fields_get(client: TestClient) -> None:
     )
     response.raise_for_status()
     data = response.json()
-    assert "properties" not in data["features"][0]
+    assert data["features"][0]["properties"] == {}
 
 
 def test_fields_post(client: TestClient) -> None:
@@ -146,7 +176,7 @@ def test_fields_post(client: TestClient) -> None:
     )
     response.raise_for_status()
     data = response.json()
-    assert "properties" not in data["features"][0]
+    assert data["features"][0]["properties"] == {}
 
 
 def test_sort_get(client: TestClient) -> None:

@@ -93,15 +93,17 @@ def create(
 ) -> StacApi:
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
-        s3end = os.getenv("AWS_S3_ENDPOINT")
-        if s3end:
-            duckdb_client.execute(
-                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-            )
-        else:
-            duckdb_client.execute(
-                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-            )
+        skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
+        if not skip_s3:
+            s3end = os.getenv("AWS_S3_ENDPOINT")
+            if s3end:
+                duckdb_client.execute(
+                    f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
+                )
+            else:
+                duckdb_client.execute(
+                    "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
+                )
         duckdb_client.execute("SET parquet_metadata_cache = true;")
     if settings is None:
         settings = Settings(
