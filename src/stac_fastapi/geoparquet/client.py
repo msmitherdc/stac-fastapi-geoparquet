@@ -79,9 +79,7 @@ def _query_ext_to_cql2_json(query: dict[str, dict[str, Any]]) -> dict[str, Any]:
                     }
                 )
             elif op == "in":
-                clauses.append(
-                    {"op": "in", "args": [{"property": prop}, list(value)]}
-                )
+                clauses.append({"op": "in", "args": [{"property": prop}, list(value)]})
             elif op == "startsWith":
                 clauses.append(
                     {"op": "like", "args": [{"property": prop}, f"{value}%"]}
@@ -582,9 +580,7 @@ class Client(BaseCoreClient):
                     stac_item = cast(Item, item)
                     if strip_access_tag_id:
                         stac_item.get("properties", {}).pop("access_tag_id", None)
-                    items.append(
-                        self.item_with_links(stac_item, request, collection)
-                    )
+                    items.append(self.item_with_links(stac_item, request, collection))
                 if len(items) >= limit:
                     collections.insert(0, collection)
                     offset = offset + len(collection_items)
@@ -632,14 +628,18 @@ class Client(BaseCoreClient):
 
                 # Filter out all variations of None/empty fields safely
                 clean_next_search = {
-                    k: v for k, v in next_search.items()
-                    if v is not None and v not in ("", "None", "[None]", "['None']", '["None"]')
+                    k: v
+                    for k, v in next_search.items()
+                    if v is not None
+                    and v not in ("", "None", "[None]", "['None']", '["None"]')
                 }
 
                 #  Encode using doseq=True so lists/sequences are properly formatted
                 links.append(
                     {
-                        "href": url + "?" + urllib.parse.urlencode(clean_next_search, doseq=True),
+                        "href": url
+                        + "?"
+                        + urllib.parse.urlencode(clean_next_search, doseq=True),
                         "rel": "next",
                         "type": "application/geo+json",
                         "method": "GET",
