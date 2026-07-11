@@ -31,7 +31,12 @@ def test_create(extension_directory: Path) -> None:
         assert response.status_code == 200
 
 
-def test_create_from_parquet_file() -> None:
+def test_create_from_parquet_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This doesn't pass its own duckdb_client, so `create()` would otherwise
+    # try to create a real S3 credential-chain secret - CI runners have no
+    # AWS credentials configured, so that hard-fails with
+    # `RustacError: ... Secret Validation Failure`.
+    monkeypatch.setenv("STAC_FASTAPI_SKIP_S3_SECRET", "true")
     settings = Settings(
         stac_fastapi_landing_id="test",
         stac_fastapi_title="test",
