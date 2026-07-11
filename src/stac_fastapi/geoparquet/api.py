@@ -151,7 +151,7 @@ def create(
     async def custom_swagger_ui_html(req: Request) -> HTMLResponse:
         # Dynamically extract root_path from the incoming request scope
         root_path = req.scope.get("root_path", "").rstrip("/")
-        
+
         openapi_url = root_path + app_instance.openapi_url
         oauth2_redirect_url = app_instance.swagger_ui_oauth2_redirect_url
         if oauth2_redirect_url:
