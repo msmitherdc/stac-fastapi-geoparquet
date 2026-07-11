@@ -17,7 +17,12 @@ def extension_directory() -> Path:
 
 def test_create(extension_directory: Path) -> None:
     duckdb_client = DuckdbClient(extension_directory=str(extension_directory))
-    settings = Settings(stac_fastapi_collections_href=str(COLLECTIONS_PATH))
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_collections_href=str(COLLECTIONS_PATH),
+    )
     api = stac_fastapi.geoparquet.api.create(
         duckdb_client=duckdb_client, settings=settings
     )
@@ -27,7 +32,12 @@ def test_create(extension_directory: Path) -> None:
 
 
 def test_create_from_parquet_file() -> None:
-    settings = Settings(stac_fastapi_geoparquet_href=str(NAIP_PATH))
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_geoparquet_href=str(NAIP_PATH),
+    )
     api = stac_fastapi.geoparquet.api.create(settings=settings)
     with TestClient(api.app) as client:
         response = client.get("/search")
