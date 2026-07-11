@@ -114,24 +114,24 @@ _STAC_CORE_QUERYABLES: dict[str, dict[str, Any]] = {
         "format": "geojson-geometry",
     },
     "data_program_id": {
-        "type": "integer", 
+        "type": "integer",
         "title": "Data Program Id",
-        "description": "The GRiD Data Program Unique ID"
+        "description": "The GRiD Data Program Unique ID",
     },
     "datatype_name": {
-        "type": "string", 
+        "type": "string",
         "title": "Datatype Name",
-        "description": "The specific datatype of the items in this collection"
+        "description": "The specific datatype of the items in this collection",
     },
     "datatype_category_name": {
-        "type": "string", 
+        "type": "string",
         "title": "Datatype Category Name",
-        "description": "The general category of the datatypes"
+        "description": "The general category of the datatypes",
     },
     "dataclass": {
-        "type": "string", 
+        "type": "string",
         "title": "Dataclass",
-        "description": "The class of the data. Raster / Vector / Pointcloud / Mesh"
+        "description": "The class of the data. Raster / Vector / Pointcloud / Mesh",
     },
 }
 
