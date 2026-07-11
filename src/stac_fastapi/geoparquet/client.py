@@ -449,7 +449,16 @@ class Client(BaseCoreClient):
             search_dict["filter"] = filter_expr
         # Capture filter_lang before any cleanup so the AT injection below
         # always has the correct value (fixes the None-when-POST-has-no-filter-lang bug).
-        filter_lang: str | None = search_dict.pop("filter_lang", None)
+        # The key varies by request method: POST's `search_dict` comes from
+        # `model_dump(by_alias=True)`, which uses the pydantic alias
+        # "filter-lang" (hyphen); GET's arrives via **kwargs from a FastAPI
+        # dependency function, which can only use the valid identifier
+        # "filter_lang" (underscore). Popping only one always missed the
+        # other, leaving `filter_lang` None and silently discarding any real
+        # `filter` in favor of just the access_tag_id clause below.
+        filter_lang: str | None = search_dict.pop(
+            "filter-lang", None
+        ) or search_dict.pop("filter_lang", None)
         if filter_lang:
             search_dict["filter-lang"] = filter_lang
         if "filter" not in search_dict:
@@ -476,6 +485,17 @@ class Client(BaseCoreClient):
         if sortby := search_dict.pop("sortby", None):
             search_dict["sortby"] = sortby
 
+        # rustac's DuckdbClient evaluates `filter` against the *projected*
+        # columns, not the full row, so a caller-supplied `include` that
+        # omits `access_tag_id` would silently make the access_tag_id filter
+        # injected below match nothing. Keep it in the projection and strip
+        # it back out of the response if the caller didn't ask for it.
+        requested_include = search_dict.get("include")
+        strip_access_tag_id = False
+        if requested_include and "access_tag_id" not in requested_include:
+            search_dict["include"] = [*requested_include, "access_tag_id"]
+            strip_access_tag_id = True
+
         # Translate the Query Extension's `query` into an equivalent CQL2
         # filter — rustac's DuckdbClient only understands `filter`/CQL2 and
         # raises RustacError("query is not implemented") if `query` reaches it.
@@ -500,6 +520,12 @@ class Client(BaseCoreClient):
                     400,
                     f"Unsupported filter-lang: {filter_lang!r} for the 'query' extension.",
                 )
+            search_dict["filter-lang"] = filter_lang
+
+        # The caller-visible filter (their own `filter`/`query`, merged, but
+        # not yet ANDed with the grid-specific access_tag_id clause below) -
+        # this is what belongs in public pagination links, not the merged one.
+        public_filter = search_dict.get("filter")
 
         # Inject access_tag_id as a CQL filter
         if filter_lang:
@@ -553,8 +579,11 @@ class Client(BaseCoreClient):
 
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
+                    stac_item = cast(Item, item)
+                    if strip_access_tag_id:
+                        stac_item.get("properties", {}).pop("access_tag_id", None)
                     items.append(
-                        self.item_with_links(cast(Item, item), request, collection)
+                        self.item_with_links(stac_item, request, collection)
                     )
                 if len(items) >= limit:
                     collections.insert(0, collection)
@@ -568,7 +597,11 @@ class Client(BaseCoreClient):
 
         if collections and ((search.limit or DEFAULT_LIMIT) <= num_items):
             next_search = copy.deepcopy(search_dict)
-            next_search.pop("filter", None)
+            if public_filter:
+                next_search["filter"] = public_filter
+            else:
+                next_search.pop("filter", None)
+                next_search.pop("filter-lang", None)
             next_search["limit"] = search.limit or DEFAULT_LIMIT
             next_search["offset"] = offset
             next_search["collections"] = collections

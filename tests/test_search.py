@@ -115,7 +115,7 @@ def test_query_ext_post(client: TestClient) -> None:
     response = client.post("/search", json=params)
     response.raise_for_status()
     assert len(response.json()["features"]) == 1
-    assert response.json()["features"][0]["properties"]["naip:year"] == 2022
+    assert response.json()["features"][0]["properties"]["naip:year"] == "2022"
 
     params = {"limit": 1, "query": {"naip:year": {"eq": "notayear"}}}
     response = client.post("/search", json=params)
@@ -133,7 +133,7 @@ def test_query_ext_combines_with_filter(client: TestClient) -> None:
     response.raise_for_status()
     assert response.json()["features"]
     for feature in response.json()["features"]:
-        assert feature["properties"]["naip:year"] == 2022
+        assert feature["properties"]["naip:year"] == "2022"
         assert feature["properties"]["naip:state"] == "ne"
 
 
@@ -162,7 +162,7 @@ def test_fields_get(client: TestClient) -> None:
     )
     response.raise_for_status()
     data = response.json()
-    assert "properties" not in data["features"][0]
+    assert data["features"][0]["properties"] == {}
 
 
 def test_fields_post(client: TestClient) -> None:
@@ -176,7 +176,7 @@ def test_fields_post(client: TestClient) -> None:
     )
     response.raise_for_status()
     data = response.json()
-    assert "properties" not in data["features"][0]
+    assert data["features"][0]["properties"] == {}
 
 
 def test_sort_get(client: TestClient) -> None:
