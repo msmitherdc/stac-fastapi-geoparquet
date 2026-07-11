@@ -1,6 +1,8 @@
 import os
-import stac_fastapi.geoparquet.api
+
 from fastapi.staticfiles import StaticFiles
+
+import stac_fastapi.geoparquet.api
 
 api = stac_fastapi.geoparquet.api.create()
 app = api.app
