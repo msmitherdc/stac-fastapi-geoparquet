@@ -45,5 +45,19 @@ def test_create_from_parquet_file(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     api = stac_fastapi.geoparquet.api.create(settings=settings)
     with TestClient(api.app) as client:
+        # Auto-generated collections carry no access_tag_id — they must be
+        # treated as public everywhere, not just in the collections list.
         response = client.get("/search")
         assert response.status_code == 200
+        assert len(response.json()["features"]) > 0
+
+        response = client.get("/collections")
+        collection_ids = [c["id"] for c in response.json()["collections"]]
+        assert collection_ids == ["naip"]
+
+        response = client.get("/collections/naip")
+        assert response.status_code == 200
+
+        response = client.get("/collections/naip/items")
+        assert response.status_code == 200
+        assert len(response.json()["features"]) > 0

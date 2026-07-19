@@ -6,6 +6,16 @@ def test_get_item(client: TestClient) -> None:
     assert response.status_code == 200, response.text
 
 
+def test_get_item_404(client: TestClient) -> None:
+    response = client.get("/collections/naip/items/not-an-item")
+    assert response.status_code == 404
+
+
+def test_items_unknown_collection_404(client: TestClient) -> None:
+    response = client.get("/collections/not-a-collection/items")
+    assert response.status_code == 404
+
+
 def test_items_with_offset(client: TestClient) -> None:
     # https://github.com/stac-utils/stac-fastapi-geoparquet/issues/46
     item_a = (

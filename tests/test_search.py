@@ -123,6 +123,26 @@ def test_query_ext_post(client: TestClient) -> None:
     assert not response.json()["features"]
 
 
+def test_query_ext_get(client: TestClient) -> None:
+    # On GET requests `query` arrives as a JSON-encoded string; it used to
+    # crash with `'str' object has no attribute 'items'`.
+    params = {"limit": 1, "query": '{"naip:year": {"eq": "2022"}}'}
+    response = client.get("/search", params=params)
+    response.raise_for_status()
+    assert len(response.json()["features"]) == 1
+    assert response.json()["features"][0]["properties"]["naip:year"] == "2022"
+
+    params = {"limit": 1, "query": '{"naip:year": {"eq": "notayear"}}'}
+    response = client.get("/search", params=params)
+    response.raise_for_status()
+    assert not response.json()["features"]
+
+
+def test_query_ext_get_invalid_json(client: TestClient) -> None:
+    response = client.get("/search", params={"query": "{not json"})
+    assert response.status_code == 400
+
+
 def test_query_ext_combines_with_filter(client: TestClient) -> None:
     params = {
         "limit": 10,
@@ -177,6 +197,54 @@ def test_fields_post(client: TestClient) -> None:
     response.raise_for_status()
     data = response.json()
     assert data["features"][0]["properties"] == {}
+
+
+def test_fields_paging_fidelity(client: TestClient) -> None:
+    # The next link must carry the caller's `fields` selection (not the
+    # internal include/exclude keys) so page 2 is projected the same way.
+    response = client.get("/search", params={"limit": 1, "fields": "id,geometry"})
+    response.raise_for_status()
+    assert response.json()["features"][0]["properties"] == {}
+    next_link = next(link for link in response.json()["links"] if link["rel"] == "next")
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(next_link["href"]).query)
+    assert query["fields"] == ["id,geometry"]
+    assert "include" not in query
+    assert "access_tag_id" not in query["fields"][0]
+
+    response = client.get(next_link["href"])
+    response.raise_for_status()
+    assert response.json()["features"][0]["properties"] == {}
+
+
+def test_fields_exclude_get(client: TestClient) -> None:
+    response = client.get(
+        "/search",
+        params={"collections": "naip", "limit": 1, "fields": "-naip:year"},
+    )
+    response.raise_for_status()
+    properties = response.json()["features"][0]["properties"]
+    assert "naip:year" not in properties
+    assert properties  # other properties are still present
+
+
+def test_post_search_next_body_is_public(client: TestClient) -> None:
+    response = client.post(
+        "/search", json={"limit": 1, "fields": {"include": ["id", "geometry"]}}
+    )
+    response.raise_for_status()
+    data = response.json()
+    for rel in ("self", "next"):
+        link = next(link for link in data["links"] if link["rel"] == rel)
+        body = link["body"]
+        assert "include" not in body, rel
+        # `include` is modeled as a set, so its order is not stable
+        assert sorted(body["fields"]["include"]) == ["geometry", "id"], rel
+        assert "access_tag_id" not in str(body.get("filter", "")), rel
+
+
+def test_400_intersects(client: TestClient) -> None:
+    response = client.get("/search", params={"intersects": "{not json"})
+    assert response.status_code == 400
 
 
 def test_sort_get(client: TestClient) -> None:

@@ -1,7 +1,6 @@
 import ast
 import copy
 import json
-import os
 import urllib.parse
 from datetime import datetime as dt
 from typing import Any, cast
@@ -20,6 +19,96 @@ from .models import PostSearchRequestModel
 
 DEFAULT_LIMIT = 10_000
 
+# Collections (and rows) that don't carry an `access_tag_id` are treated as
+# public, i.e. as if they were tagged with this id. This keeps the
+# `stac_fastapi_geoparquet_href` mode (auto-generated collections without any
+# grid metadata) fully functional.
+DEFAULT_ACCESS_TAG = 1
+
+
+def _access_tags(request: Request) -> list[int]:
+    """Parse the ``x-grid-accesstags`` header into a list of tag ids.
+
+    A missing header means the caller only has the public tag. A malformed
+    header is a client error (400), not a server crash.
+    """
+    header = request.headers.get("x-grid-accesstags")
+    if header is None:
+        return [DEFAULT_ACCESS_TAG]
+    try:
+        parsed = ast.literal_eval(header)
+    except ValueError, SyntaxError, MemoryError, RecursionError:
+        raise HTTPException(
+            400, "invalid x-grid-accesstags header: expected a list of integers"
+        )
+    if isinstance(parsed, int) and not isinstance(parsed, bool):
+        return [parsed]
+    if isinstance(parsed, (list, tuple)) and all(
+        isinstance(tag, int) and not isinstance(tag, bool) for tag in parsed
+    ):
+        return list(parsed)
+    raise HTTPException(
+        400, "invalid x-grid-accesstags header: expected a list of integers"
+    )
+
+
+def _apply_access_filter(search_dict: dict[str, Any], atl: list[int]) -> None:
+    """AND an ``access_tag_id IN (...)`` clause into ``search_dict``'s filter.
+
+    Mutates ``search_dict`` in place. Only called for collections whose
+    metadata carries an ``access_tag_id``, so the backing geoparquet is
+    expected to have the column.
+    """
+    filter_lang = search_dict.get("filter-lang") or "cql2-text"
+    if filter_lang == "cql2-text":
+        clause = f"access_tag_id IN ({', '.join(str(tag) for tag in atl)})"
+        if existing := search_dict.get("filter"):
+            search_dict["filter"] = f"({existing}) AND {clause}"
+        else:
+            search_dict["filter"] = clause
+            search_dict["filter-lang"] = "cql2-text"
+    elif filter_lang == "cql2-json":
+        clause_json: dict[str, Any] = {
+            "op": "in",
+            "args": [{"property": "access_tag_id"}, list(atl)],
+        }
+        if existing := search_dict.get("filter"):
+            if isinstance(existing, str):
+                try:
+                    existing = json.loads(existing)
+                except json.JSONDecodeError as e:
+                    raise HTTPException(400, f"invalid cql2-json filter: {e}")
+            search_dict["filter"] = {"op": "and", "args": [existing, clause_json]}
+        else:
+            search_dict["filter"] = clause_json
+            search_dict["filter-lang"] = "cql2-json"
+    else:
+        raise HTTPException(
+            400,
+            f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.",
+        )
+
+
+def _public_search_body(search_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a caller-visible copy of ``search_dict`` for pagination links.
+
+    The internal ``include``/``exclude`` keys (rustac's projection arguments)
+    are folded back into the API-level ``fields`` parameter so the link
+    round-trips through the request models.
+    """
+    body = copy.deepcopy(search_dict)
+    include = body.pop("include", None)
+    exclude = body.pop("exclude", None)
+    if include or exclude:
+        fields: dict[str, list[str]] = {}
+        if include:
+            fields["include"] = include
+        if exclude:
+            fields["exclude"] = exclude
+        body["fields"] = fields
+    return body
+
+
 # rustac's DuckdbClient does not implement the STAC Query Extension's `query`
 # parameter directly (it raises `RustacError: query is not implemented`), so
 # it must be translated into an equivalent CQL2 filter before being forwarded.
@@ -31,6 +120,11 @@ _QUERY_EXT_OPERATORS = {
     "gt": ">",
     "gte": ">=",
 }
+
+
+def _cql2_text_identifier(prop: str) -> str:
+    """Quote a property name for CQL2-text so it can't inject filter syntax."""
+    return '"' + prop.replace('"', '""') + '"'
 
 
 def _cql2_text_literal(value: Any) -> str:
@@ -47,20 +141,21 @@ def _query_ext_to_cql2_text(query: dict[str, dict[str, Any]]) -> str:
     """Translate a STAC Query Extension object into a CQL2-text filter."""
     clauses = []
     for prop, ops in query.items():
+        ident = _cql2_text_identifier(prop)
         for op, value in ops.items():
             if op in _QUERY_EXT_OPERATORS:
                 clauses.append(
-                    f"{prop} {_QUERY_EXT_OPERATORS[op]} {_cql2_text_literal(value)}"
+                    f"{ident} {_QUERY_EXT_OPERATORS[op]} {_cql2_text_literal(value)}"
                 )
             elif op == "in":
                 values = ", ".join(_cql2_text_literal(v) for v in value)
-                clauses.append(f"{prop} IN ({values})")
+                clauses.append(f"{ident} IN ({values})")
             elif op == "startsWith":
-                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'{value}%')}")
+                clauses.append(f"{ident} LIKE {_cql2_text_literal(f'{value}%')}")
             elif op == "endsWith":
-                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'%{value}')}")
+                clauses.append(f"{ident} LIKE {_cql2_text_literal(f'%{value}')}")
             elif op == "contains":
-                clauses.append(f"{prop} LIKE {_cql2_text_literal(f'%{value}%')}")
+                clauses.append(f"{ident} LIKE {_cql2_text_literal(f'%{value}%')}")
             else:
                 raise HTTPException(400, f"Unsupported query operator: {op!r}")
     return " AND ".join(clauses)
@@ -106,15 +201,12 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
 
         # ---- access-tag filtering (grid-specific) -------------------------
-        atl = [1]
-        atlh = dict(request.headers).get("x-grid-accesstags")
-        if atlh:
-            atl = ast.literal_eval(atlh)
+        atl = _access_tags(request)
         collections = cast(dict[str, Collection], request.state.collections)
         collections = {
             cname: coll
             for cname, coll in collections.items()
-            if collections[cname].get("access_tag_id", 1) in atl
+            if coll.get("access_tag_id", DEFAULT_ACCESS_TAG) in atl
         }
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
@@ -279,17 +371,24 @@ class Client(BaseCoreClient):
 
     def get_collection(self, collection_id: str, **kwargs: Any) -> Collection:
         request = kwargs.pop("request")
+        collection = self._accessible_collection(collection_id, request)
+        return collection_with_links(collection, request)
+
+    def _accessible_collection(
+        self, collection_id: str, request: Request
+    ) -> Collection:
+        """Return the collection if it exists and the caller may access it.
+
+        Raises :class:`NotFoundError` otherwise — inaccessible collections are
+        indistinguishable from missing ones.
+        """
         collections = cast(dict[str, Collection], request.state.collections)
-        if collection := collections.get(collection_id):
-            atl = [1]
-            atlh = dict(request.headers).get("x-grid-accesstags")
-            if atlh:
-                atl = ast.literal_eval(atlh)
-            if collection.get("access_tag_id") not in atl:
-                raise NotFoundError(f"Collection does not exist: {collection_id}")
-            return collection_with_links(collection, request)
-        else:
+        collection = collections.get(collection_id)
+        if collection is None or collection.get(
+            "access_tag_id", DEFAULT_ACCESS_TAG
+        ) not in _access_tags(request):
             raise NotFoundError(f"Collection does not exist: {collection_id}")
+        return collection
 
     def get_item(self, item_id: str, collection_id: str, **kwargs: Any) -> Item:
         item_collection = self.get_search(
@@ -308,7 +407,7 @@ class Client(BaseCoreClient):
         self,
         collections: list[str] | None = None,
         ids: list[str] | None = None,
-        bbox: BBox | str | None = None,
+        bbox: BBox | None = None,
         intersects: str | None = None,
         datetime: str | None = None,
         limit: int | None = 10,
@@ -317,19 +416,12 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
 
         if intersects:
-            maybe_intersects = json.loads(intersects)
+            try:
+                maybe_intersects = json.loads(intersects)
+            except json.JSONDecodeError as e:
+                raise HTTPException(400, f"invalid intersects: {e}")
         else:
             maybe_intersects = None
-
-        if isinstance(bbox, str):
-            if bbox.startswith("["):
-                bbox = bbox[1:]
-            if bbox.endswith("]"):
-                bbox = bbox[:-1]
-            try:
-                bbox = cast(BBox, [float(s) for s in bbox.split(",")])
-            except ValueError as e:
-                raise HTTPException(400, f"invalid bbox: {e}")
 
         try:
             search = BaseSearchPostRequest(
@@ -361,8 +453,9 @@ class Client(BaseCoreClient):
     ) -> ItemCollection:
         request = kwargs.pop("request")
         offset = kwargs.pop("offset", None)
-        # qp = dict(request.query_params)
-        # offset = qp.pop("offset", None)
+        # 404 (rather than an empty FeatureCollection) for collections that
+        # don't exist or that the caller's access tags don't cover.
+        self._accessible_collection(collection_id, request)
         search = PostSearchRequestModel(
             collections=[collection_id],
             bbox=bbox,
@@ -397,46 +490,29 @@ class Client(BaseCoreClient):
         **kwargs: Any,
     ) -> ItemCollection:
 
-        def _has_access(coll: Collection | None, atl: list[int]) -> bool:
-            if atl is None or coll is None:
-                return False
-            return coll.get("access_tag_id") in atl
-
         client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
 
-        s3end = os.getenv("AWS_S3_ENDPOINT")
-        skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
-        if not skip_s3:
-            if s3end:
-                client.execute(
-                    f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-                )
-            else:
-                client.execute(
-                    "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-                )
-
         # Resolve the access tag list early — used both to gate the collections
         # list and to inject the CQL filter below.
-        atl = [1]
-        atlh = dict(request.headers).get("x-grid-accesstags")
-        if atlh:
-            atl = ast.literal_eval(atlh)
+        atl = _access_tags(request)
         all_collections = cast(dict[str, Collection], request.state.collections)
+
+        def _has_access(coll: Collection | None) -> bool:
+            if coll is None:
+                return False
+            return coll.get("access_tag_id", DEFAULT_ACCESS_TAG) in atl
 
         if search.collections:
             # Caller specified explicit collections — honour the request but
             # silently drop any the user's access tags don't cover.
             collections = [
-                c
-                for c in search.collections
-                if _has_access(all_collections.get(c), atl)
+                c for c in search.collections if _has_access(all_collections.get(c))
             ]
         else:
             # No collections specified — use every href the user can access.
             collections = [
-                c for c in hrefs.keys() if _has_access(all_collections.get(c), atl)
+                c for c in hrefs.keys() if _has_access(all_collections.get(c))
             ]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
@@ -467,7 +543,9 @@ class Client(BaseCoreClient):
                 exclude = []
                 for field in fields:
                     if field.startswith("-"):
-                        exclude.append(field)
+                        exclude.append(field[1:])
+                    elif field.startswith("+"):
+                        include.append(field[1:])
                     else:
                         include.append(field)
                 search_dict.update({"include": include, "exclude": exclude})
@@ -480,24 +558,19 @@ class Client(BaseCoreClient):
                 )
             else:
                 raise HTTPException(400, f"unexpected fields type: {fields}")
-        if sortby := search_dict.pop("sortby", None):
-            search_dict["sortby"] = sortby
-
-        # rustac's DuckdbClient evaluates `filter` against the *projected*
-        # columns, not the full row, so a caller-supplied `include` that
-        # omits `access_tag_id` would silently make the access_tag_id filter
-        # injected below match nothing. Keep it in the projection and strip
-        # it back out of the response if the caller didn't ask for it.
-        requested_include = search_dict.get("include")
-        strip_access_tag_id = False
-        if requested_include and "access_tag_id" not in requested_include:
-            search_dict["include"] = [*requested_include, "access_tag_id"]
-            strip_access_tag_id = True
 
         # Translate the Query Extension's `query` into an equivalent CQL2
         # filter — rustac's DuckdbClient only understands `filter`/CQL2 and
         # raises RustacError("query is not implemented") if `query` reaches it.
         if query := search_dict.pop("query", None):
+            # On GET requests `query` arrives as a JSON-encoded string.
+            if isinstance(query, str):
+                try:
+                    query = json.loads(query)
+                except json.JSONDecodeError as e:
+                    raise HTTPException(400, f"invalid query: {e}")
+            if not isinstance(query, dict):
+                raise HTTPException(400, "invalid query: expected a JSON object")
             filter_lang = filter_lang or "cql2-text"
             if filter_lang == "cql2-text":
                 query_filter: Any = _query_ext_to_cql2_text(query)
@@ -520,45 +593,10 @@ class Client(BaseCoreClient):
                 )
             search_dict["filter-lang"] = filter_lang
 
-        # The caller-visible filter (their own `filter`/`query`, merged, but
-        # not yet ANDed with the grid-specific access_tag_id clause below) -
-        # this is what belongs in public pagination links, not the merged one.
-        public_filter = search_dict.get("filter")
-
-        # Inject access_tag_id as a CQL filter
-        if filter_lang:
-            if filter_lang == "cql2-text":
-                if search_dict.get("filter"):
-                    search_dict["filter"] = (
-                        f"({search_dict['filter']}) AND access_tag_id IN ({', '.join(str(i) for i in atl)})"
-                    )
-                else:
-                    search_dict["filter"] = (
-                        f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
-                    )
-            elif filter_lang == "cql2-json":
-                if search_dict.get("filter"):
-                    search_dict["filter"] = {
-                        "op": "and",
-                        "args": [
-                            search_dict["filter"],
-                            {"op": "in", "args": [{"property": "access_tag_id"}, atl]},
-                        ],
-                    }
-                else:
-                    search_dict["filter"] = {
-                        "op": "in",
-                        "args": [{"property": "access_tag_id"}, atl],
-                    }
-            else:
-                raise ValueError(
-                    f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'."
-                )
-        else:
-            search_dict["filter"] = (
-                f"access_tag_id IN ({', '.join(str(i) for i in atl)})"
-            )
-            filter_lang = "cql2-text"
+        # From here on `search_dict` stays caller-visible: the grid-specific
+        # access_tag_id clause is ANDed in per collection (only for collections
+        # that carry an access tag), so pagination/self links built from
+        # `search_dict` never leak the internal filter.
 
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
@@ -574,12 +612,24 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
+                if "access_tag_id" in all_collections[collection]:
+                    _apply_access_filter(collection_search_dict, atl)
+                    # rustac's DuckdbClient evaluates `filter` against the
+                    # *projected* columns, not the full row, so a
+                    # caller-supplied `include` that omits `access_tag_id`
+                    # would silently make the injected access filter match
+                    # nothing. Keep it in the projection; it's always stripped
+                    # from the response below.
+                    projection: list[str] | None = collection_search_dict.get("include")
+                    if projection and "access_tag_id" not in projection:
+                        projection.append("access_tag_id")
 
                 collection_items = client.search(href, **collection_search_dict)
                 for item in collection_items:
                     stac_item = cast(Item, item)
-                    if strip_access_tag_id:
-                        stac_item.get("properties", {}).pop("access_tag_id", None)
+                    # access_tag_id is purely an internal filtering column —
+                    # never expose it, even if the caller asked via `fields`.
+                    stac_item.get("properties", {}).pop("access_tag_id", None)
                     items.append(self.item_with_links(stac_item, request, collection))
                 if len(items) >= limit:
                     collections.insert(0, collection)
@@ -592,12 +642,7 @@ class Client(BaseCoreClient):
         num_items = len(items)
 
         if collections and ((search.limit or DEFAULT_LIMIT) <= num_items):
-            next_search = copy.deepcopy(search_dict)
-            if public_filter:
-                next_search["filter"] = public_filter
-            else:
-                next_search.pop("filter", None)
-                next_search.pop("filter-lang", None)
+            next_search = _public_search_body(search_dict)
             next_search["limit"] = search.limit or DEFAULT_LIMIT
             next_search["offset"] = offset
             next_search["collections"] = collections
@@ -625,6 +670,14 @@ class Client(BaseCoreClient):
                     next_search["collections"] = ",".join(collections)
                 if bbox := next_search.get("bbox"):
                     next_search["bbox"] = ",".join(map(str, bbox))
+                if fields := next_search.pop("fields", None):
+                    # Serialize back to the GET form: `id,geometry,-foo`
+                    next_search["fields"] = ",".join(
+                        [
+                            *fields.get("include", []),
+                            *(f"-{f}" for f in fields.get("exclude", [])),
+                        ]
+                    )
 
                 # Filter out all variations of None/empty fields safely
                 clean_next_search = {
@@ -652,7 +705,7 @@ class Client(BaseCoreClient):
                     "rel": "self",
                     "type": "application/geo+json",
                     "method": "POST",
-                    "body": search_dict,
+                    "body": _public_search_body(search_dict),
                 }
             )
             if next_search:
