@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "arro3-core>=0.8.0",
-    "attr>=0.3.2",
+    "attrs>=25.0.0",
     "fastapi>=0.115.8",
     "geojson-pydantic>=1.2.0",
     "obstore>=0.8.0",
@@ -16,7 +16,6 @@ dependencies = [
     "stac-fastapi-api>=5.0.2",
     "stac-fastapi-extensions>=5.0.2",
     "stac-fastapi-types>=5.0.2",
-    "debugpy>=1.8.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.14",
@@ -35,6 +34,7 @@ Changelog = "https://github.com/stac-utils/stac-fastapi-geoparquet/blob/main/CHA
 
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.0",
     "fastapi[standard]>=0.115.6",
     "mkdocs-material>=9.6.5",
     "mypy>=1.15.0",
@@ -42,7 +42,6 @@ dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.3",
     "ruff>=0.9.7",
-    "httpx2>=2.3.0",
 ]
 validate = ["stac-api-validator>=0.6.3"]
 deploy = [

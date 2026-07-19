@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 import obstore.store
 import pystac.utils
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from rustac import DuckdbClient  # type: ignore[attr-defined]
@@ -21,6 +21,7 @@ from .models import (
     GetSearchRequestModel,
     ItemsGetRequestModel,
     PostSearchRequestModel,
+    collection_search_ext,
 )
 from .settings import Settings
 
@@ -63,16 +64,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     hrefs = dict()
     for collection in collections:
         if collection["id"] in collection_dict:
-            raise HTTPException(
-                500, f"two collections with the same id: {collection['id']}"
-            )
+            # Startup validation, not an HTTP context — fail app startup.
+            raise ValueError(f"two collections with the same id: {collection['id']}")
         else:
             collection_dict[collection["id"]] = collection
         for key, asset in collection["assets"].items():
             if asset.get("type") == GEOPARQUET_MEDIA_TYPE:
                 if collection["id"] in hrefs:
-                    raise HTTPException(
-                        500, f"two hrefs for one collection: {collection['id']}"
+                    raise ValueError(
+                        f"two hrefs for one collection: {collection['id']}"
                     )
                 else:
                     hrefs[collection["id"]] = pystac.utils.make_absolute_href(
@@ -173,7 +173,10 @@ def create(
         search_post_request_model=PostSearchRequestModel,
         items_get_request_model=ItemsGetRequestModel,
         collections_get_request_model=CollectionSearchRequest,
-        extensions=ITEM_EXTENSIONS,
+        # collection_search_ext contributes conformance classes only (its
+        # register() is a no-op); the /collections request model is the
+        # hand-crafted CollectionSearchRequest above.
+        extensions=[*ITEM_EXTENSIONS, collection_search_ext],
     )
     return api
 

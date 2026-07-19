@@ -4,11 +4,7 @@ import attr
 import stac_fastapi.api.models
 from fastapi import Query
 from stac_fastapi.api.models import ItemCollectionUri
-from stac_fastapi.extensions.core import (
-    CollectionSearchFilterExtension,
-    FilterExtension,
-    FreeTextExtension,
-)
+from stac_fastapi.extensions.core import FilterExtension, FreeTextExtension
 from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
 from stac_fastapi.extensions.core.fields import (
     FieldsConformanceClasses,
@@ -17,8 +13,8 @@ from stac_fastapi.extensions.core.fields import (
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
-from stac_fastapi.extensions.core.query import QueryConformanceClasses, QueryExtension
-from stac_fastapi.extensions.core.sort import SortConformanceClasses, SortExtension
+from stac_fastapi.extensions.core.query import QueryExtension
+from stac_fastapi.extensions.core.sort import SortExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox
 
@@ -46,20 +42,13 @@ ITEM_EXTENSIONS = [
 
 # ---------------------------------------------------------------------------
 # Collection-search extensions (used for GET /collections)
+#
+# Only advertise what `Client.all_collections` actually implements:
+# ids/bbox/datetime/limit (core collection-search) plus free-text `q`.
 # ---------------------------------------------------------------------------
 
-collection_search_extensions = [
-    CollectionSearchFilterExtension(
-        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-    ),
-    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
-    QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
-    SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-]
-
 collection_search_ext = CollectionSearchExtension.from_extensions(
-    collection_search_extensions
+    [FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS])]
 )
 
 # ---------------------------------------------------------------------------
