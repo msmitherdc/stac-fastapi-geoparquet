@@ -612,8 +612,21 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
-                if "access_tag_id" in all_collections[collection]:
-                    _apply_access_filter(collection_search_dict, atl)
+                raw_access_tag = all_collections[collection].get("access_tag_id")
+                if raw_access_tag is not None:
+                    collection_access_tag = cast(int, raw_access_tag)
+                    # Scope to *this collection's own* tag, not the caller's
+                    # full granted set. Multiple collections can share one
+                    # physical parquet file, sliced only by access_tag_id
+                    # (e.g. "…-Raster-504" and "…-Raster-2304" over the same
+                    # href) — filtering by `atl` would let rows tagged for a
+                    # sibling collection leak into this one whenever the
+                    # caller happens to be granted more than one of those
+                    # tags. `_has_access` above already confirmed the caller
+                    # is allowed to see `collection_access_tag`.
+                    _apply_access_filter(
+                        collection_search_dict, [collection_access_tag]
+                    )
                     # rustac's DuckdbClient evaluates `filter` against the
                     # *projected* columns, not the full row, so a
                     # caller-supplied `include` that omits `access_tag_id`
