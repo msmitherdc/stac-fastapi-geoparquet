@@ -1,4 +1,3 @@
-import ast
 import copy
 import json
 import urllib.parse
@@ -18,75 +17,6 @@ from starlette.requests import Request
 from .models import PostSearchRequestModel
 
 DEFAULT_LIMIT = 10_000
-
-# Collections (and rows) that don't carry an `access_tag_id` are treated as
-# public, i.e. as if they were tagged with this id. This keeps the
-# `stac_fastapi_geoparquet_href` mode (auto-generated collections without any
-# grid metadata) fully functional.
-DEFAULT_ACCESS_TAG = 1
-
-
-def _access_tags(request: Request) -> list[int]:
-    """Parse the ``x-grid-accesstags`` header into a list of tag ids.
-
-    A missing header means the caller only has the public tag. A malformed
-    header is a client error (400), not a server crash.
-    """
-    header = request.headers.get("x-grid-accesstags")
-    if header is None:
-        return [DEFAULT_ACCESS_TAG]
-    try:
-        parsed = ast.literal_eval(header)
-    except ValueError, SyntaxError, MemoryError, RecursionError:
-        raise HTTPException(
-            400, "invalid x-grid-accesstags header: expected a list of integers"
-        )
-    if isinstance(parsed, int) and not isinstance(parsed, bool):
-        return [parsed]
-    if isinstance(parsed, (list, tuple)) and all(
-        isinstance(tag, int) and not isinstance(tag, bool) for tag in parsed
-    ):
-        return list(parsed)
-    raise HTTPException(
-        400, "invalid x-grid-accesstags header: expected a list of integers"
-    )
-
-
-def _apply_access_filter(search_dict: dict[str, Any], atl: list[int]) -> None:
-    """AND an ``access_tag_id IN (...)`` clause into ``search_dict``'s filter.
-
-    Mutates ``search_dict`` in place. Only called for collections whose
-    metadata carries an ``access_tag_id``, so the backing geoparquet is
-    expected to have the column.
-    """
-    filter_lang = search_dict.get("filter-lang") or "cql2-text"
-    if filter_lang == "cql2-text":
-        clause = f"access_tag_id IN ({', '.join(str(tag) for tag in atl)})"
-        if existing := search_dict.get("filter"):
-            search_dict["filter"] = f"({existing}) AND {clause}"
-        else:
-            search_dict["filter"] = clause
-            search_dict["filter-lang"] = "cql2-text"
-    elif filter_lang == "cql2-json":
-        clause_json: dict[str, Any] = {
-            "op": "in",
-            "args": [{"property": "access_tag_id"}, list(atl)],
-        }
-        if existing := search_dict.get("filter"):
-            if isinstance(existing, str):
-                try:
-                    existing = json.loads(existing)
-                except json.JSONDecodeError as e:
-                    raise HTTPException(400, f"invalid cql2-json filter: {e}")
-            search_dict["filter"] = {"op": "and", "args": [existing, clause_json]}
-        else:
-            search_dict["filter"] = clause_json
-            search_dict["filter-lang"] = "cql2-json"
-    else:
-        raise HTTPException(
-            400,
-            f"Unsupported filter-lang: {filter_lang!r}. Expected 'cql2-text' or 'cql2-json'.",
-        )
 
 
 def _public_search_body(search_dict: dict[str, Any]) -> dict[str, Any]:
@@ -197,17 +127,34 @@ def _query_ext_to_cql2_json(query: dict[str, dict[str, Any]]) -> dict[str, Any]:
 class Client(BaseCoreClient):
     """A stac-fastapi-geoparquet client."""
 
+    def visible_collections(self, request: Request) -> dict[str, Collection]:
+        """Return the collections this request is allowed to see.
+
+        Every endpoint goes through here instead of reading
+        ``request.state.collections`` directly, so a subclass can hide
+        collections from a caller by overriding this one method.
+        """
+        return cast(dict[str, Collection], request.state.collections)
+
+    def search_collection(
+        self,
+        collection_id: str,
+        href: str,
+        search_dict: dict[str, Any],
+        request: Request,
+    ) -> list[Item]:
+        """Run one collection's share of a search against its geoparquet.
+
+        The single point where a search reaches the DuckDB client, so a
+        subclass can adjust ``search_dict`` (extra filters, extra projected
+        columns) or post-process the returned items.
+        """
+        client = cast(DuckdbClient, request.state.client)
+        return cast(list[Item], client.search(href, **search_dict))
+
     def all_collections(self, **kwargs: Any) -> Collections:
         request = kwargs.pop("request")
-
-        # ---- access-tag filtering (grid-specific) -------------------------
-        atl = _access_tags(request)
-        collections = cast(dict[str, Collection], request.state.collections)
-        collections = {
-            cname: coll
-            for cname, coll in collections.items()
-            if coll.get("access_tag_id", DEFAULT_ACCESS_TAG) in atl
-        }
+        collections = self.visible_collections(request)
 
         # ---- collection search parameters (injected by CollectionSearchRequest) --
         ids: list[str] | None = kwargs.pop("ids", None)
@@ -371,22 +318,17 @@ class Client(BaseCoreClient):
 
     def get_collection(self, collection_id: str, **kwargs: Any) -> Collection:
         request = kwargs.pop("request")
-        collection = self._accessible_collection(collection_id, request)
+        collection = self._get_collection(collection_id, request)
         return collection_with_links(collection, request)
 
-    def _accessible_collection(
-        self, collection_id: str, request: Request
-    ) -> Collection:
-        """Return the collection if it exists and the caller may access it.
+    def _get_collection(self, collection_id: str, request: Request) -> Collection:
+        """Return the collection, or raise :class:`NotFoundError`.
 
-        Raises :class:`NotFoundError` otherwise — inaccessible collections are
-        indistinguishable from missing ones.
+        Collections hidden by :meth:`visible_collections` are indistinguishable
+        from ones that don't exist.
         """
-        collections = cast(dict[str, Collection], request.state.collections)
-        collection = collections.get(collection_id)
-        if collection is None or collection.get(
-            "access_tag_id", DEFAULT_ACCESS_TAG
-        ) not in _access_tags(request):
+        collection = self.visible_collections(request).get(collection_id)
+        if collection is None:
             raise NotFoundError(f"Collection does not exist: {collection_id}")
         return collection
 
@@ -454,8 +396,8 @@ class Client(BaseCoreClient):
         request = kwargs.pop("request")
         offset = kwargs.pop("offset", None)
         # 404 (rather than an empty FeatureCollection) for collections that
-        # don't exist or that the caller's access tags don't cover.
-        self._accessible_collection(collection_id, request)
+        # don't exist or that the caller isn't allowed to see.
+        self._get_collection(collection_id, request)
         search = PostSearchRequestModel(
             collections=[collection_id],
             bbox=bbox,
@@ -490,30 +432,16 @@ class Client(BaseCoreClient):
         **kwargs: Any,
     ) -> ItemCollection:
 
-        client = cast(DuckdbClient, request.state.client)
         hrefs = cast(dict[str, str], request.state.hrefs)
-
-        # Resolve the access tag list early — used both to gate the collections
-        # list and to inject the CQL filter below.
-        atl = _access_tags(request)
-        all_collections = cast(dict[str, Collection], request.state.collections)
-
-        def _has_access(coll: Collection | None) -> bool:
-            if coll is None:
-                return False
-            return coll.get("access_tag_id", DEFAULT_ACCESS_TAG) in atl
+        all_collections = self.visible_collections(request)
 
         if search.collections:
             # Caller specified explicit collections — honour the request but
-            # silently drop any the user's access tags don't cover.
-            collections = [
-                c for c in search.collections if _has_access(all_collections.get(c))
-            ]
+            # silently drop any that aren't visible to them.
+            collections = [c for c in search.collections if c in all_collections]
         else:
-            # No collections specified — use every href the user can access.
-            collections = [
-                c for c in hrefs.keys() if _has_access(all_collections.get(c))
-            ]
+            # No collections specified — search every visible one.
+            collections = [c for c in hrefs if c in all_collections]
 
         search_dict = search.model_dump(exclude_none=True, by_alias=True)
         search_dict.update(**kwargs)
@@ -529,7 +457,7 @@ class Client(BaseCoreClient):
         # dependency function, which can only use the valid identifier
         # "filter_lang" (underscore). Popping only one always missed the
         # other, leaving `filter_lang` None and silently discarding any real
-        # `filter` in favor of just the access_tag_id clause below.
+        # `filter` from the search.
         filter_lang: str | None = search_dict.pop(
             "filter-lang", None
         ) or search_dict.pop("filter_lang", None)
@@ -593,10 +521,9 @@ class Client(BaseCoreClient):
                 )
             search_dict["filter-lang"] = filter_lang
 
-        # From here on `search_dict` stays caller-visible: the grid-specific
-        # access_tag_id clause is ANDed in per collection (only for collections
-        # that carry an access tag), so pagination/self links built from
-        # `search_dict` never leak the internal filter.
+        # From here on `search_dict` stays caller-visible: anything a subclass
+        # adds in `search_collection` goes onto its own per-collection copy, so
+        # pagination/self links built from `search_dict` never leak it.
 
         limit = search_dict.get("limit", DEFAULT_LIMIT)
         offset = search_dict.get("offset", 0) or 0
@@ -612,38 +539,11 @@ class Client(BaseCoreClient):
                         "offset": offset,
                     }
                 )
-                raw_access_tag = all_collections[collection].get("access_tag_id")
-                if raw_access_tag is not None:
-                    collection_access_tag = cast(int, raw_access_tag)
-                    # Scope to *this collection's own* tag, not the caller's
-                    # full granted set. Multiple collections can share one
-                    # physical parquet file, sliced only by access_tag_id
-                    # (e.g. "…-Raster-504" and "…-Raster-2304" over the same
-                    # href) — filtering by `atl` would let rows tagged for a
-                    # sibling collection leak into this one whenever the
-                    # caller happens to be granted more than one of those
-                    # tags. `_has_access` above already confirmed the caller
-                    # is allowed to see `collection_access_tag`.
-                    _apply_access_filter(
-                        collection_search_dict, [collection_access_tag]
-                    )
-                    # rustac's DuckdbClient evaluates `filter` against the
-                    # *projected* columns, not the full row, so a
-                    # caller-supplied `include` that omits `access_tag_id`
-                    # would silently make the injected access filter match
-                    # nothing. Keep it in the projection; it's always stripped
-                    # from the response below.
-                    projection: list[str] | None = collection_search_dict.get("include")
-                    if projection and "access_tag_id" not in projection:
-                        projection.append("access_tag_id")
-
-                collection_items = client.search(href, **collection_search_dict)
+                collection_items = self.search_collection(
+                    collection, href, collection_search_dict, request
+                )
                 for item in collection_items:
-                    stac_item = cast(Item, item)
-                    # access_tag_id is purely an internal filtering column —
-                    # never expose it, even if the caller asked via `fields`.
-                    stac_item.get("properties", {}).pop("access_tag_id", None)
-                    items.append(self.item_with_links(stac_item, request, collection))
+                    items.append(self.item_with_links(item, request, collection))
                 if len(items) >= limit:
                     collections.insert(0, collection)
                     offset = offset + len(collection_items)
@@ -739,6 +639,9 @@ class Client(BaseCoreClient):
         }
 
     def item_with_links(self, item: Item, request: Request, collection: str) -> Item:
+        # `properties` is required on a STAC Item, but a `fields` projection
+        # that selects none of them drops the key entirely.
+        item.setdefault("properties", {})
         links = [
             {
                 "href": str(request.url_for("Landing Page")),

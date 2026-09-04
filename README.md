@@ -51,6 +51,30 @@ scripts/generate-collections s3://my-bucket/a.parquet s3://my-bucket/b.parquet
 
 This will update `./data/collections.json`.
 
+### Access tags (optional)
+
+This fork ships an optional access-control layer, off by default in the
+library and enabled in the deployed app. Collections carrying an
+`access_tag_id` field are only visible to callers whose `x-grid-accesstags`
+request header includes that tag, and searches against them are restricted to
+parquet rows whose `access_tag_id` column matches. Collections without the
+field are unaffected, so a mixed catalog works.
+
+It lives entirely in [`access_tags.py`](./src/stac_fastapi/geoparquet/access_tags.py)
+— one middleware that parses the header plus client subclasses hooked in
+through `Client.visible_collections` and `Client.search_collection`. Build the
+app with it instead of the stock factory:
+
+```python
+from stac_fastapi.geoparquet import access_tags
+
+api = access_tags.create()
+app = api.app
+```
+
+`stac_fastapi.geoparquet.main` does this unless `STAC_FASTAPI_ACCESS_TAGS` is
+set to `false`.
+
 ### Limitations
 
 - Currently, only supports one collection per file (tracking issue: <https://github.com/stac-utils/stac-fastapi-geoparquet/issues/27>)

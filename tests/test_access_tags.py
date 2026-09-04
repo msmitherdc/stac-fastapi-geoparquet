@@ -1,104 +1,273 @@
-"""Tests for the grid-specific ``x-grid-accesstags`` access control.
+"""Tests for the optional ``x-grid-accesstags`` access control.
 
-The session fixtures tag every collection (and every parquet row) with
+These exercise the opt-in app built by
+:func:`stac_fastapi.geoparquet.access_tags.create`; the stock app (the
+``client`` fixture in ``conftest.py``) has none of this behaviour.
+
+The fixtures below tag every collection (and every parquet row) with
 ``access_tag_id = 1``, so a header that doesn't include tag 1 must hide
 everything, and one that does (or no header at all) must behave as public.
 """
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from rustac import DuckdbClient  # type: ignore[attr-defined]
 
-import stac_fastapi.geoparquet.api
-from stac_fastapi.geoparquet import Settings
+from stac_fastapi.geoparquet import Settings, access_tags
 
 from .conftest import COLLECTIONS_PATH, DATA_DIR
 
 ALL_IDS = {"naip", "naip-10", "openaerialmap-10", "openaerialmap"}
+ACCESS_TAG_ID = 1
+PRIVATE_ACCESS_TAG = 7
 
 
-def test_no_header_defaults_to_public(client: TestClient) -> None:
-    response = client.get("/collections")
+@pytest.fixture(scope="session")
+def collections_with_access_tag(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Materialize copies of the checked-in fixtures with an access tag.
+
+    The checked-in collections.json / parquet carry no ``access_tag_id`` at
+    all, so rather than mutate binary fixtures, copy them once per session
+    with the column and field added.
+    """
+    tmp_dir = tmp_path_factory.mktemp("access_tag_fixtures")
+    duckdb_client = DuckdbClient()
+
+    collections = json.loads(COLLECTIONS_PATH.read_text())
+    for collection in collections:
+        collection["access_tag_id"] = ACCESS_TAG_ID
+        asset = collection["assets"]["data"]
+        src = (DATA_DIR / asset["href"]).resolve()
+        dst = tmp_dir / src.name
+        duckdb_client.execute(
+            f"COPY (SELECT *, {ACCESS_TAG_ID} AS access_tag_id FROM "
+            f"read_parquet('{src}')) TO '{dst}' (FORMAT PARQUET);"
+        )
+        asset["href"] = str(dst)
+
+    collections_path = tmp_dir / "collections.json"
+    collections_path.write_text(json.dumps(collections))
+    return collections_path
+
+
+@pytest.fixture
+def access_tag_client(collections_with_access_tag: Path) -> Iterator[TestClient]:
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_collections_href=str(collections_with_access_tag),
+    )
+    duckdb_client = DuckdbClient()  # no S3 secret, fine for local parquet files
+    api = access_tags.create(settings, duckdb_client=duckdb_client)
+    with TestClient(api.app) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def mixed_tag_collections(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A single collection whose rows carry a mix of access tags.
+
+    Rows alternate between tag 1 (public) and tag 7, so a search can be
+    checked for row-level — not just collection-level — filtering.
+    """
+    tmp_dir = tmp_path_factory.mktemp("mixed_tag_fixtures")
+    duckdb_client = DuckdbClient()
+
+    collections = json.loads(COLLECTIONS_PATH.read_text())
+    collection = next(c for c in collections if c["id"] == "naip")
+    # Visible to both tags, so only the row filter can hide anything.
+    collection["access_tag_id"] = ACCESS_TAG_ID
+    src = (DATA_DIR / collection["assets"]["data"]["href"]).resolve()
+    dst = tmp_dir / "mixed.parquet"
+    # A small slice keeps every search below the page limit, so the tests can
+    # compare whole result sets rather than pages of them; taking it from two
+    # years means a caller-supplied filter has something to exclude.
+    duckdb_client.execute(
+        "COPY (SELECT *, CASE WHEN row_number() OVER () % 2 = 0 THEN "
+        f"{ACCESS_TAG_ID} ELSE {PRIVATE_ACCESS_TAG} END AS access_tag_id FROM ("
+        f"""(SELECT * FROM read_parquet('{src}') WHERE "naip:year" = '2022' LIMIT 100)"""
+        " UNION ALL "
+        f"""(SELECT * FROM read_parquet('{src}') WHERE "naip:year" = '2021' LIMIT 100)"""
+        f")) TO '{dst}' (FORMAT PARQUET);"
+    )
+    collection["assets"]["data"]["href"] = str(dst)
+
+    collections_path = tmp_dir / "collections.json"
+    collections_path.write_text(json.dumps([collection]))
+    return collections_path
+
+
+@pytest.fixture
+def mixed_tag_client(mixed_tag_collections: Path) -> Iterator[TestClient]:
+    settings = Settings(
+        stac_fastapi_landing_id="test",
+        stac_fastapi_title="test",
+        stac_fastapi_description="test",
+        stac_fastapi_collections_href=str(mixed_tag_collections),
+    )
+    api = access_tags.create(settings, duckdb_client=DuckdbClient())
+    with TestClient(api.app) as client:
+        yield client
+
+
+def test_no_header_defaults_to_public(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get("/collections")
     assert response.status_code == 200
     assert {c["id"] for c in response.json()["collections"]} == ALL_IDS
 
 
-def test_matching_tag_sees_everything(client: TestClient) -> None:
+def test_matching_tag_sees_everything(access_tag_client: TestClient) -> None:
     headers = {"x-grid-accesstags": "[1, 2]"}
-    response = client.get("/collections", headers=headers)
+    response = access_tag_client.get("/collections", headers=headers)
     assert response.status_code == 200
     assert {c["id"] for c in response.json()["collections"]} == ALL_IDS
 
-    response = client.get("/collections/naip", headers=headers)
+    response = access_tag_client.get("/collections/naip", headers=headers)
     assert response.status_code == 200
 
-    response = client.get("/search", params={"limit": 1}, headers=headers)
+    response = access_tag_client.get("/search", params={"limit": 1}, headers=headers)
     assert response.status_code == 200
     assert len(response.json()["features"]) == 1
 
 
-def test_non_matching_tag_hides_collections(client: TestClient) -> None:
+def test_non_matching_tag_hides_collections(access_tag_client: TestClient) -> None:
     headers = {"x-grid-accesstags": "[2]"}
-    response = client.get("/collections", headers=headers)
+    response = access_tag_client.get("/collections", headers=headers)
     assert response.status_code == 200
     assert response.json()["collections"] == []
 
 
-def test_non_matching_tag_404s_collection(client: TestClient) -> None:
-    response = client.get("/collections/naip", headers={"x-grid-accesstags": "[2]"})
+def test_non_matching_tag_404s_collection(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get(
+        "/collections/naip", headers={"x-grid-accesstags": "[2]"}
+    )
     assert response.status_code == 404
 
 
-def test_non_matching_tag_404s_items(client: TestClient) -> None:
-    response = client.get(
+def test_non_matching_tag_404s_items(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get(
         "/collections/naip/items", headers={"x-grid-accesstags": "[2]"}
     )
     assert response.status_code == 404
 
 
-def test_non_matching_tag_empty_search(client: TestClient) -> None:
+def test_non_matching_tag_empty_search(access_tag_client: TestClient) -> None:
     headers = {"x-grid-accesstags": "[2]"}
-    response = client.get("/search", headers=headers)
+    response = access_tag_client.get("/search", headers=headers)
     assert response.status_code == 200
     assert response.json()["features"] == []
 
-    response = client.post("/search", json={}, headers=headers)
+    response = access_tag_client.post("/search", json={}, headers=headers)
     assert response.status_code == 200
     assert response.json()["features"] == []
 
 
-def test_malformed_header_is_400(client: TestClient) -> None:
+def test_malformed_header_is_400(access_tag_client: TestClient) -> None:
     for value in ("not a list", "foo][", "[1", "{'a': 1}", "['1) OR (true']", "1.5"):
         for path in ("/search", "/collections", "/collections/naip"):
-            response = client.get(path, headers={"x-grid-accesstags": value})
+            response = access_tag_client.get(path, headers={"x-grid-accesstags": value})
             assert response.status_code == 400, (path, value, response.text)
 
 
-def test_single_integer_header_accepted(client: TestClient) -> None:
-    response = client.get("/collections", headers={"x-grid-accesstags": "1"})
+def test_single_integer_header_accepted(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get("/collections", headers={"x-grid-accesstags": "1"})
     assert response.status_code == 200
     assert {c["id"] for c in response.json()["collections"]} == ALL_IDS
 
 
-def test_access_tag_id_not_leaked_in_items(client: TestClient) -> None:
-    response = client.get("/search", params={"limit": 1})
+def test_access_tag_id_not_leaked_in_items(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get("/search", params={"limit": 1})
     response.raise_for_status()
     properties = response.json()["features"][0]["properties"]
     assert "access_tag_id" not in properties
 
 
-def test_access_tag_id_not_leaked_even_when_requested(client: TestClient) -> None:
+def test_access_tag_id_not_leaked_even_when_requested(
+    access_tag_client: TestClient,
+) -> None:
     # access_tag_id is purely internal — explicitly requesting it via
     # `fields` must not expose it either.
-    response = client.get(
+    response = access_tag_client.get(
         "/search", params={"limit": 1, "fields": "id,geometry,access_tag_id"}
     )
     response.raise_for_status()
     properties = response.json()["features"][0]["properties"]
     assert "access_tag_id" not in properties
+
+
+def test_access_tag_id_not_a_queryable(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get("/collections/naip/queryables")
+    response.raise_for_status()
+    assert "access_tag_id" not in response.json()["properties"]
+
+
+def test_stock_app_ignores_the_header(client: TestClient) -> None:
+    # The stock app doesn't know about access tags at all — the header is
+    # inert rather than an error, and nothing is hidden.
+    response = client.get("/collections", headers={"x-grid-accesstags": "[2]"})
+    assert response.status_code == 200
+    assert {c["id"] for c in response.json()["collections"]} == ALL_IDS
+
+
+def _search_ids(client: TestClient, tags: str, **params: str) -> set[str]:
+    response = client.get(
+        "/search",
+        params={"limit": "1000", **params},
+        headers={"x-grid-accesstags": tags},
+    )
+    response.raise_for_status()
+    return {f["id"] for f in response.json()["features"]}
+
+
+def _ids_with_tag(collections_path: Path, tag: int) -> set[str]:
+    """The ids actually carrying ``tag`` in the backing parquet."""
+    collection = json.loads(collections_path.read_text())[0]
+    href = collection["assets"]["data"]["href"]
+    table = DuckdbClient().query_to_table(
+        f"SELECT id FROM read_parquet('{href}') WHERE access_tag_id = {tag}"
+    )
+    return set(table.column("id").to_pylist())
+
+
+def test_rows_outside_the_collection_tag_are_hidden(
+    mixed_tag_client: TestClient, mixed_tag_collections: Path
+) -> None:
+    # The collection owns tag 1 and its file also holds tag-7 rows. Only the
+    # tag-1 rows may ever surface under it - including for a caller who holds
+    # tag 7 as well, since the collection's own tag is what scopes the rows.
+    public_rows = _ids_with_tag(mixed_tag_collections, ACCESS_TAG_ID)
+    private_rows = _ids_with_tag(mixed_tag_collections, PRIVATE_ACCESS_TAG)
+    assert public_rows and private_rows
+
+    for header in (
+        f"[{ACCESS_TAG_ID}]",
+        f"[{ACCESS_TAG_ID}, {PRIVATE_ACCESS_TAG}]",
+    ):
+        returned = _search_ids(mixed_tag_client, header)
+        assert returned == public_rows, header
+        assert returned.isdisjoint(private_rows), header
+
+
+def test_row_filter_survives_a_caller_filter(
+    mixed_tag_client: TestClient, mixed_tag_collections: Path
+) -> None:
+    # A caller-supplied filter is ANDed with the access filter, not swallowed
+    # by it, and cannot widen what the access filter allows.
+    public_rows = _ids_with_tag(mixed_tag_collections, ACCESS_TAG_ID)
+    private_rows = _ids_with_tag(mixed_tag_collections, PRIVATE_ACCESS_TAG)
+
+    filtered = _search_ids(
+        mixed_tag_client, f"[{ACCESS_TAG_ID}]", filter="naip:year='2022'"
+    )
+    assert filtered
+    assert filtered < public_rows  # the caller's filter still narrows
+    assert filtered.isdisjoint(private_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +309,7 @@ def shared_href_collections(tmp_path_factory: pytest.TempPathFactory) -> Path:
         """
     )
 
-    def _collection(collection_id: str, access_tag_id: int) -> dict:
+    def _collection(collection_id: str, access_tag_id: int) -> dict[str, Any]:
         coll = json.loads(json.dumps(naip))  # deep copy
         coll["id"] = collection_id
         coll["access_tag_id"] = access_tag_id
@@ -157,7 +326,7 @@ def shared_href_collections(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def shared_href_client(shared_href_collections: Path):
+def shared_href_client(shared_href_collections: Path) -> Iterator[TestClient]:
     settings = Settings(
         stac_fastapi_landing_id="test",
         stac_fastapi_title="test",
@@ -165,7 +334,7 @@ def shared_href_client(shared_href_collections: Path):
         stac_fastapi_collections_href=str(shared_href_collections),
     )
     duckdb_client = DuckdbClient()
-    api = stac_fastapi.geoparquet.api.create(settings, duckdb_client=duckdb_client)
+    api = access_tags.create(settings, duckdb_client=duckdb_client)
     with TestClient(api.app) as client:
         yield client
 

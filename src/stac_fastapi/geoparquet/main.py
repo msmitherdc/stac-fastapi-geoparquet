@@ -3,8 +3,22 @@ import os
 from fastapi.staticfiles import StaticFiles
 
 import stac_fastapi.geoparquet.api
+from stac_fastapi.geoparquet import access_tags
 
-api = stac_fastapi.geoparquet.api.create()
+# GRiD access-tag filtering is optional (see `access_tags`), but it *is* how
+# this deployment enforces access control, so it's on unless explicitly
+# disabled — a silent default-off would serve restricted collections publicly.
+ACCESS_TAGS_ENABLED = os.getenv("STAC_FASTAPI_ACCESS_TAGS", "true").lower() not in (
+    "0",
+    "false",
+    "no",
+)
+
+create = (
+    access_tags.create if ACCESS_TAGS_ENABLED else stac_fastapi.geoparquet.api.create
+)
+
+api = create()
 app = api.app
 
 # Static assets (Swagger UI) ship inside the package; resolve relative to this

@@ -113,26 +113,6 @@ _STAC_CORE_QUERYABLES: dict[str, dict[str, Any]] = {
         "type": "object",
         "format": "geojson-geometry",
     },
-    "data_program_id": {
-        "type": "integer",
-        "title": "Data Program Id",
-        "description": "The GRiD Data Program Unique ID",
-    },
-    "datatype_name": {
-        "type": "string",
-        "title": "Datatype Name",
-        "description": "The specific datatype of the items in this collection",
-    },
-    "datatype_category_name": {
-        "type": "string",
-        "title": "Datatype Category Name",
-        "description": "The general category of the datatypes",
-    },
-    "dataclass": {
-        "type": "string",
-        "title": "Dataclass",
-        "description": "The class of the data. Raster / Vector / Pointcloud / Mesh",
-    },
 }
 
 # Columns that are internal implementation details, not useful as queryables
@@ -152,6 +132,8 @@ _SKIP_COLUMNS: frozenset[str] = frozenset(
 
 def _extract_queryable_properties(
     describe_rows: list[tuple[Any, ...]],
+    skip_columns: frozenset[str],
+    known_queryables: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     """Turn DESCRIBE output rows into a JSON-Schema *properties* dict."""
     properties: dict[str, dict[str, Any]] = {}
@@ -160,16 +142,14 @@ def _extract_queryable_properties(
         col_name: str = row[0]
         col_type: str = row[1]
 
-        if col_name in _SKIP_COLUMNS:
+        if col_name in skip_columns:
             continue
 
         schema_fragment = _duckdb_type_to_jsonschema(col_type)
-        if col_name == "datetime":
-            schema_fragment = _STAC_CORE_QUERYABLES["datetime"].copy()
-        elif col_name == "id":
-            schema_fragment = _STAC_CORE_QUERYABLES["id"].copy()
-        elif col_name == "collection":
-            schema_fragment = _STAC_CORE_QUERYABLES["collection"].copy()
+        if col_name in known_queryables:
+            # Prefer the curated title/description over anything inferred
+            # from the DuckDB column type.
+            schema_fragment = known_queryables[col_name].copy()
         else:
             # Use title-cased column name as a human-readable title
             schema_fragment["title"] = (
@@ -186,7 +166,14 @@ class FiltersClient(BaseFiltersClient):
 
     When `collection_id` is *None* (i.e. the global ``/queryables``
     endpoint) returns static common queryables
+
+    Subclasses can extend :attr:`known_queryables` with curated
+    titles/descriptions for their own properties, and add internal columns to
+    :attr:`skip_columns` to keep them out of the queryables document.
     """
+
+    known_queryables: dict[str, dict[str, Any]] = _STAC_CORE_QUERYABLES
+    skip_columns: frozenset[str] = _SKIP_COLUMNS
 
     def get_queryables(
         self,
@@ -211,7 +198,7 @@ class FiltersClient(BaseFiltersClient):
                 return _build_queryables_doc(
                     collection_id=collection_id,
                     base_url=base_url,
-                    properties=dict(_STAC_CORE_QUERYABLES),
+                    properties=dict(self.known_queryables),
                 )
 
             properties = self._properties_for_href(href, request)
@@ -228,7 +215,7 @@ class FiltersClient(BaseFiltersClient):
             return _build_queryables_doc(
                 collection_id=None,
                 base_url=base_url,
-                properties=dict(_STAC_CORE_QUERYABLES),
+                properties=dict(self.known_queryables),
             )
 
     def _properties_for_href(
@@ -241,7 +228,7 @@ class FiltersClient(BaseFiltersClient):
         try:
             safe_href = href.replace("'", "''")
             arrow_table = client.query_to_table(
-                f"DESCRIBE SELECT * EXCLUDE (access_tag_id) FROM read_parquet('{safe_href}') LIMIT 0"
+                f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
             )
 
             # Convert these columns from the Arrow Table to Python lists.
@@ -251,10 +238,12 @@ class FiltersClient(BaseFiltersClient):
             # Zip the lists together
             rows = list(zip(column_names, column_types))
 
-            return _extract_queryable_properties(rows)
+            return _extract_queryable_properties(
+                rows, self.skip_columns, self.known_queryables
+            )
         except Exception:
             # If schema introspection fails fall back to the STAC core queryables
-            return dict(_STAC_CORE_QUERYABLES)
+            return dict(self.known_queryables)
 
 
 def _build_queryables_doc(
