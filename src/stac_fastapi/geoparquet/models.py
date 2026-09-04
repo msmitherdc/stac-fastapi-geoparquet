@@ -11,10 +11,12 @@ from stac_fastapi.extensions.core.fields import (
     FieldsExtension,
 )
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
 from stac_fastapi.extensions.core.query import QueryExtension
 from stac_fastapi.extensions.core.sort import SortExtension
+from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox
 
@@ -24,21 +26,35 @@ from .search import FixedSearchGetRequest, _bbox_converter, _ids_converter
 # ---------------------------------------------------------------------------
 # Item-search extensions (used for GET /search, POST /search, GET /items)
 # ---------------------------------------------------------------------------
-filter_extension = FilterExtension(client=FiltersClient())
-filter_extension.conformance_classes.append(
-    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
-)
-fields_extension = FieldsExtension()
-fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
-ITEM_EXTENSIONS = [
-    fields_extension,
-    filter_extension,
-    FreeTextExtension(),
-    OffsetPaginationExtension(),
-    QueryExtension(),
-    SortExtension(),
-]
+
+def item_extensions(
+    filters_client: BaseFiltersClient | None = None,
+) -> list[ApiExtension]:
+    """Build the item-search extensions.
+
+    ``filters_client`` overrides the client backing ``/queryables``; the
+    extensions themselves are stateless apart from that, so each caller gets
+    its own instances.
+    """
+    filter_extension = FilterExtension(client=filters_client or FiltersClient())
+    filter_extension.conformance_classes.append(
+        FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
+    )
+    fields_extension = FieldsExtension()
+    fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
+    return [
+        fields_extension,
+        filter_extension,
+        FreeTextExtension(),
+        OffsetPaginationExtension(),
+        QueryExtension(),
+        SortExtension(),
+    ]
+
+
+ITEM_EXTENSIONS = item_extensions()
 
 # ---------------------------------------------------------------------------
 # Collection-search extensions (used for GET /collections)

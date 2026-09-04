@@ -13,15 +13,17 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from rustac import DuckdbClient  # type: ignore[attr-defined]
 from stac_fastapi.api.app import StacApi
+from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
+from stac_fastapi.types.core import BaseCoreClient
 
 from .client import Client
 from .models import (
-    ITEM_EXTENSIONS,
     CollectionSearchRequest,
     GetSearchRequestModel,
     ItemsGetRequestModel,
     PostSearchRequestModel,
     collection_search_ext,
+    item_extensions,
 )
 from .settings import Settings
 
@@ -90,7 +92,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[State]:
 def create(
     settings: Settings | None = None,
     duckdb_client: DuckdbClient | None = None,
+    client: BaseCoreClient | None = None,
+    filters_client: BaseFiltersClient | None = None,
 ) -> StacApi:
+    """Build the STAC API application.
+
+    ``client`` and ``filters_client`` default to the stock implementations;
+    pass subclasses to layer extra behaviour (e.g. access control) on top.
+    """
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
         skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
@@ -167,7 +176,7 @@ def create(
 
     api = StacApi(
         settings=settings,
-        client=Client(),
+        client=client or Client(),
         app=app_instance,  # Pass our customized FastAPI instance here
         search_get_request_model=GetSearchRequestModel,
         search_post_request_model=PostSearchRequestModel,
@@ -176,7 +185,7 @@ def create(
         # collection_search_ext contributes conformance classes only (its
         # register() is a no-op); the /collections request model is the
         # hand-crafted CollectionSearchRequest above.
-        extensions=[*ITEM_EXTENSIONS, collection_search_ext],
+        extensions=[*item_extensions(filters_client), collection_search_ext],
     )
     return api
 
