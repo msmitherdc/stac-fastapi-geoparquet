@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
@@ -37,6 +38,8 @@ from .api import create as create_api
 from .client import Client
 from .filters import _STAC_CORE_QUERYABLES, FiltersClient
 from .settings import Settings
+
+logger = logging.getLogger(__name__)
 
 ACCESS_TAGS_HEADER = "x-grid-accesstags"
 """Request header carrying the caller's access tag ids."""
@@ -210,13 +213,35 @@ class AccessTagClient(Client):
                 projection.append(ACCESS_TAG_FIELD)
 
         items = super().search_collection(collection_id, href, search_dict, request)
+        if not tagged:
+            return items
 
-        if tagged:
-            for item in items:
-                # access_tag_id is purely an internal filtering column — never
-                # expose it, even if the caller asked for it via `fields`.
-                item.get("properties", {}).pop(ACCESS_TAG_FIELD, None)
-        return items
+        # Re-check every row rather than trusting the injected filter to have
+        # been applied as written. rustac's CQL2 translation drops the
+        # grouping of a parenthesised OR nested under an AND, so a
+        # caller-supplied filter containing an OR turns `(their filter) AND
+        # access_tag_id IN (...)` into `their-first-disjunct OR (their-rest
+        # AND access_tag_id IN (...))` — the first disjunct escapes the access
+        # check entirely and rows the caller may not see come back. A fix is
+        # reported against rustac-py but unreleased; even once it lands,
+        # enforcing access purely through a filter string means trusting the
+        # whole CQL2 translation to be correct, and this check doesn't.
+        kept: list[Item] = []
+        for item in items:
+            # access_tag_id is purely an internal filtering column — never
+            # expose it, even if the caller asked for it via `fields`.
+            tag = item.get("properties", {}).pop(ACCESS_TAG_FIELD, None)
+            if tag == collection_tag:
+                kept.append(item)
+            else:
+                logger.warning(
+                    "dropped an item from %s that the access filter let through "
+                    "(access_tag_id=%r, collection tag=%r)",
+                    collection_id,
+                    tag,
+                    collection_tag,
+                )
+        return kept
 
 
 class AccessTagFiltersClient(FiltersClient):

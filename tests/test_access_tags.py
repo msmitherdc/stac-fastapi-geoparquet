@@ -395,3 +395,29 @@ def test_unscoped_search_still_partitions_by_collection(
         by_collection.setdefault(feature["collection"], set()).add(feature["id"])
     assert set(by_collection) == {"raster-504", "raster-2304"}
     assert by_collection["raster-504"].isdisjoint(by_collection["raster-2304"])
+
+
+def test_or_filter_cannot_escape_the_access_check(
+    mixed_tag_client: TestClient, mixed_tag_collections: Path
+) -> None:
+    """A caller-supplied OR must not leak rows outside the collection's tag.
+
+    rustac drops the grouping of a parenthesised OR nested under an AND when
+    it translates CQL2 to SQL, so `(a OR b) AND access_tag_id IN (...)` is
+    evaluated as `a OR (b AND access_tag_id IN (...))` and the first disjunct
+    is returned unchecked. `AccessTagClient.search_collection` re-checks each
+    row against the collection's tag to close that hole.
+    """
+    public_rows = _ids_with_tag(mixed_tag_collections, ACCESS_TAG_ID)
+    private_rows = _ids_with_tag(mixed_tag_collections, PRIVATE_ACCESS_TAG)
+
+    # An OR spanning both years covers every row in the file, so anything the
+    # bypass lets through is visible in the result.
+    or_filter = "\"naip:year\"='2022' OR \"naip:year\"='2021'"
+    for header in (
+        f"[{ACCESS_TAG_ID}]",
+        f"[{ACCESS_TAG_ID}, {PRIVATE_ACCESS_TAG}]",
+    ):
+        returned = _search_ids(mixed_tag_client, header, filter=or_filter)
+        assert returned == public_rows, header
+        assert returned.isdisjoint(private_rows), header
