@@ -39,7 +39,7 @@ class StacFastApiGeoparquetStack(Stack):
         scope: Construct,
         construct_id: str,
         config: Config,
-        runtime: Runtime = Runtime.PYTHON_3_12,
+        runtime: Runtime = Runtime.PYTHON_3_14,
         **kwargs: Any,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -63,6 +63,30 @@ class StacFastApiGeoparquetStack(Stack):
                 restrict_public_buckets=False,
             ),
         )
+
+        # Private CA bundle, kept out of the image so it can be rotated by
+        # uploading a new object rather than rebuilding and repushing. A
+        # container-image function can't use a Lambda layer for this - layers
+        # only apply to zip-packaged functions - so the function downloads it
+        # at startup instead.
+        certificate_bucket: Bucket | None = None
+        if config.certificate_bundle_key:
+            certificate_bucket = Bucket(
+                scope=self,
+                id="certificate-bucket",
+                bucket_name=config.certificate_bucket_name
+                or f"{config.stack_name}-certs",
+                versioned=True,
+                removal_policy=RemovalPolicy.RETAIN
+                if config.stage != "test"
+                else RemovalPolicy.DESTROY,
+                block_public_access=BlockPublicAccess.BLOCK_ALL,
+            )
+            CfnOutput(
+                self,
+                "CertificateBucketName",
+                value=certificate_bucket.bucket_name,
+            )
 
         # make the bucket public, requester-pays
         bucket.add_to_resource_policy(
@@ -99,6 +123,22 @@ class StacFastApiGeoparquetStack(Stack):
 
         CfnOutput(self, "BucketName", value=bucket.bucket_name)
 
+        lambda_environment = {
+            "STAC_FASTAPI_GEOPARQUET_HREF": f"s3://{bucket.bucket_name}/{config.geoparquet_key}",
+            "HOME": "/tmp",  # for duckdb's home_directory
+        }
+        if certificate_bucket is not None:
+            # The app downloads this at startup, points SSL_CERT_FILE at the
+            # local copy, and hands the same path to DuckDB - whose HTTP layer
+            # is libcurl and does not read SSL_CERT_FILE on its own.
+            lambda_environment["STAC_FASTAPI_CA_BUNDLE_URI"] = (
+                f"s3://{certificate_bucket.bucket_name}/{config.certificate_bundle_key}"
+            )
+        if config.s3_endpoint:
+            lambda_environment["AWS_S3_ENDPOINT"] = config.s3_endpoint
+        if config.s3_url_style:
+            lambda_environment["AWS_S3_URL_STYLE"] = config.s3_url_style
+
         api_lambda = Function(
             scope=self,
             id="lambda",
@@ -118,13 +158,12 @@ class StacFastApiGeoparquetStack(Stack):
                     "PYTHON_VERSION": runtime.to_string().replace("python", ""),
                 },
             ),
-            environment={
-                "STAC_FASTAPI_GEOPARQUET_HREF": f"s3://{bucket.bucket_name}/{config.geoparquet_key}",
-                "HOME": "/tmp",  # for duckdb's home_directory
-            },
+            environment=lambda_environment,
         )
 
         bucket.grant_read(api_lambda)
+        if certificate_bucket is not None:
+            certificate_bucket.grant_read(api_lambda)
 
         api = HttpApi(
             scope=self,

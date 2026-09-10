@@ -79,8 +79,21 @@ readable — including `/tmp` in a Lambda — is enough, with no need to bake
 certificates into the image. If the path doesn't exist it's ignored with a
 warning rather than leaving DuckDB unable to verify anything.
 
-To bake certificates in anyway, put them in [`certs/`](./certs) and build the
-`runtime` stage of the Lambda Dockerfile; see that directory's README.
+Set `STAC_FASTAPI_CA_BUNDLE_URI` to have the app download the bundle at
+startup, write it to `STAC_FASTAPI_CA_BUNDLE_PATH` (default
+`/tmp/ca-bundle.crt`), and export `SSL_CERT_FILE` itself. That keeps the
+certificates out of the image so they can be rotated by uploading a new
+object, and `/tmp` persists across warm invocations so the download happens
+once per execution environment. The CDK stack creates the bucket and grants
+the function read on it when `certificate_bundle_key` is configured.
+
+A Lambda layer would be the natural home for this, but layers only apply to
+zip-packaged functions — a function deployed as a container image can't use
+one, hence the startup download.
+
+To bake certificates into the image instead, put them in [`certs/`](./certs)
+and build the `runtime` stage of the Lambda Dockerfile; see that directory's
+README.
 
 ### Access tags (optional)
 

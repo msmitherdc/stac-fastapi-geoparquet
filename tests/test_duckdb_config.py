@@ -6,12 +6,17 @@ CA bundle, which libcurl does not read from ``SSL_CERT_FILE``.
 """
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
 from rustac import DuckdbClient  # type: ignore[attr-defined]
 
-from stac_fastapi.geoparquet.api import configure_duckdb_client, s3_endpoint
+from stac_fastapi.geoparquet.api import (
+    configure_duckdb_client,
+    fetch_ca_bundle,
+    s3_endpoint,
+)
 
 
 def _setting(client: DuckdbClient, name: str) -> str | None:
@@ -147,3 +152,54 @@ def test_missing_cert_bundle_is_ignored_with_a_warning(
 
     assert not _setting(client, "ca_cert_file")
     assert "not a file" in caplog.text
+
+
+def test_ca_bundle_is_fetched_and_exported(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The bundle lives in object storage so it can be rotated without
+    # rebuilding the image; the app pulls it down and points the rest of the
+    # process at the local copy.
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "ca-bundle.crt").write_text("-----BEGIN CERTIFICATE-----\n")
+    destination = tmp_path / "local" / "ca-bundle.crt"
+
+    monkeypatch.setenv("STAC_FASTAPI_CA_BUNDLE_URI", f"{source.as_uri()}/ca-bundle.crt")
+    monkeypatch.setenv("STAC_FASTAPI_CA_BUNDLE_PATH", str(destination))
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+
+    assert fetch_ca_bundle() == str(destination)
+    assert destination.read_text().startswith("-----BEGIN CERTIFICATE-----")
+    # Exported so obstore and DuckDB both pick it up.
+    assert os.environ["SSL_CERT_FILE"] == str(destination)
+
+    # And it reaches DuckDB, which is the layer that can't read the variable.
+    monkeypatch.setenv("STAC_FASTAPI_SKIP_S3_SECRET", "true")
+    client = DuckdbClient()
+    configure_duckdb_client(client)
+    value = _setting(client, "ca_cert_file")
+    assert value is not None
+    assert Path(value).resolve() == destination.resolve()
+
+
+def test_ca_bundle_is_not_refetched_on_a_warm_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # /tmp survives between warm invocations, so a present bundle is reused
+    # rather than downloaded again.
+    destination = tmp_path / "ca-bundle.crt"
+    destination.write_text("cached")
+    monkeypatch.setenv("STAC_FASTAPI_CA_BUNDLE_URI", "s3://nonexistent/ca-bundle.crt")
+    monkeypatch.setenv("STAC_FASTAPI_CA_BUNDLE_PATH", str(destination))
+
+    # A download would fail against that URI, so returning is proof of reuse.
+    assert fetch_ca_bundle() == str(destination)
+    assert destination.read_text() == "cached"
+
+
+def test_no_ca_bundle_configured_is_a_no_op(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STAC_FASTAPI_CA_BUNDLE_URI", raising=False)
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    assert fetch_ca_bundle() is None
+    assert "SSL_CERT_FILE" not in os.environ

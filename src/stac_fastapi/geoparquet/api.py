@@ -49,6 +49,44 @@ class State(TypedDict):
     """A mapping of collection id to geoparquet href."""
 
 
+DEFAULT_CA_BUNDLE_PATH = "/tmp/ca-bundle.crt"
+"""Where a downloaded CA bundle is written.
+
+``/tmp`` is the only writable location in a Lambda, and it survives between
+warm invocations, so the download happens once per execution environment.
+"""
+
+
+def fetch_ca_bundle() -> str | None:
+    """Download the CA bundle named by ``STAC_FASTAPI_CA_BUNDLE_URI``.
+
+    Returns the local path, or None when no bundle is configured.
+
+    Keeping the certificates in object storage rather than in the image means
+    they can be rotated without rebuilding and repushing it. A Lambda deployed
+    as a container image can't use a layer for this - layers only apply to
+    zip-packaged functions - so the bundle is fetched at startup instead.
+
+    ``SSL_CERT_FILE`` is set from here so the rest of the process picks it up:
+    it has to happen before anything builds an HTTPS client, which is why this
+    runs first thing in :func:`create`.
+    """
+    uri = os.getenv("STAC_FASTAPI_CA_BUNDLE_URI")
+    if not uri:
+        return None
+
+    destination = Path(os.getenv("STAC_FASTAPI_CA_BUNDLE_PATH", DEFAULT_CA_BUNDLE_PATH))
+    if not destination.is_file():
+        prefix, file_name = uri.rsplit("/", 1)
+        store = obstore.store.from_url(prefix)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(bytes(store.get(file_name).bytes()))
+        logger.info("Fetched CA bundle from %s to %s", uri, destination)
+
+    os.environ["SSL_CERT_FILE"] = str(destination)
+    return str(destination)
+
+
 def _sql_literal(value: str) -> str:
     """Escape a value for use inside a single-quoted DuckDB SQL literal."""
     return value.replace("'", "''")
@@ -165,6 +203,10 @@ def create(
     ``client`` and ``filters_client`` default to the stock implementations;
     pass subclasses to layer extra behaviour (e.g. access control) on top.
     """
+    # Before anything builds an HTTPS client - obstore below, and DuckDB in
+    # `configure_duckdb_client` - so they all see the same trust store.
+    fetch_ca_bundle()
+
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
         configure_duckdb_client(duckdb_client)

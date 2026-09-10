@@ -20,6 +20,16 @@ class Config(BaseSettings):
         str | None, "storage key for the geoparquet file within the S3 bucket"
     ] = None
 
+    # Private CA bundle. Setting the key creates a bucket to hold it and
+    # points the function at it; leave it unset for public endpoints.
+    certificate_bundle_key: str | None = None
+    certificate_bucket_name: str | None = None
+
+    # Non-default S3 endpoints. `s3_endpoint` is a bare host - a scheme is
+    # stripped - and `s3_url_style` is "vhost" (default) or "path".
+    s3_endpoint: str | None = None
+    s3_url_style: str | None = None
+
     timeout: int = 30
     memory: int = 3009
 
