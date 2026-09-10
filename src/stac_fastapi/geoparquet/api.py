@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import urllib.parse
 from collections.abc import AsyncIterator
@@ -27,6 +28,8 @@ from .models import (
 )
 from .settings import Settings
 
+logger = logging.getLogger(__name__)
+
 GEOPARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 
 
@@ -46,20 +49,82 @@ class State(TypedDict):
     """A mapping of collection id to geoparquet href."""
 
 
+def _sql_literal(value: str) -> str:
+    """Escape a value for use inside a single-quoted DuckDB SQL literal."""
+    return value.replace("'", "''")
+
+
+def s3_endpoint() -> tuple[str | None, bool]:
+    """Resolve the S3 endpoint into ``(host[:port], use_ssl)``.
+
+    DuckDB's ``ENDPOINT`` wants a bare host - it prepends the scheme itself,
+    so handing it a URL produces nonsense like
+    ``https://bucket.https://s3.example.gov/key``. Strip any scheme, and let
+    an explicit ``http://`` turn SSL off.
+
+    ``AWS_ENDPOINT_URL`` is the AWS SDK's own variable and is read as a
+    fallback, so a deployment that sets it for boto3/obstore doesn't have to
+    set a second one just for DuckDB.
+    """
+    raw = os.getenv("AWS_S3_ENDPOINT") or os.getenv("AWS_ENDPOINT_URL")
+    if not raw:
+        return None, True
+    raw = raw.strip()
+    # urlsplit only recognizes a netloc after "//", so add one when the value
+    # is a bare host.
+    split = urllib.parse.urlsplit(raw if "//" in raw else f"//{raw}")
+    host = split.netloc or split.path.split("/", 1)[0]
+    return (host or None), split.scheme != "http"
+
+
+def configure_duckdb_client(duckdb_client: DuckdbClient) -> None:
+    """Apply the S3 and TLS configuration DuckDB needs to read remote data.
+
+    Kept in one place because every one of these has to be set on the DuckDB
+    connection itself - none of them are picked up from the environment.
+    """
+    # DuckDB's httpfs talks through libcurl, which does *not* consult
+    # SSL_CERT_FILE. Without this, a deployment using a private CA can point
+    # every other client (boto3, obstore) at its bundle and still have DuckDB
+    # fail with "SSL peer certificate or ssh remote key was not ok" - with no
+    # way to fix it short of baking the certs into the image.
+    if ca_cert_file := os.getenv("SSL_CERT_FILE"):
+        if Path(ca_cert_file).is_file():
+            duckdb_client.execute(f"SET ca_cert_file = '{_sql_literal(ca_cert_file)}';")
+        else:
+            # Pointing DuckDB at a missing bundle can fail every TLS request,
+            # so fall back to the system trust store - loudly, because the
+            # symptom otherwise is an opaque certificate error.
+            logger.warning(
+                "SSL_CERT_FILE is set to %r, which is not a file; leaving DuckDB "
+                "on the system trust store",
+                ca_cert_file,
+            )
+
+    # Some private endpoints only serve path-style addressing; DuckDB defaults
+    # to vhost, which turns the bucket into a subdomain.
+    url_style = os.getenv("AWS_S3_URL_STYLE")
+    if url_style:
+        duckdb_client.execute(f"SET s3_url_style = '{_sql_literal(url_style)}';")
+
+    if os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() not in ("1", "true"):
+        endpoint, use_ssl = s3_endpoint()
+        params = ["TYPE S3", "PROVIDER CREDENTIAL_CHAIN", "REFRESH auto"]
+        if endpoint:
+            params.append(f"ENDPOINT '{_sql_literal(endpoint)}'")
+            if not use_ssl:
+                params.append("USE_SSL false")
+        if url_style:
+            params.append(f"URL_STYLE '{_sql_literal(url_style)}'")
+        duckdb_client.execute(f"CREATE OR REPLACE SECRET ({', '.join(params)});")
+
+    duckdb_client.execute("SET parquet_metadata_cache = true;")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[State]:
     client = app.extra["duckdb_client"]
-    s3end = os.getenv("AWS_S3_ENDPOINT")
-    skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
-    if not skip_s3:
-        if s3end:
-            client.execute(
-                f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-            )
-        else:
-            client.execute(
-                "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-            )
+    configure_duckdb_client(client)
     settings: Settings = app.extra["settings"]
     collections = app.extra["collections"]
     collection_dict = dict()
@@ -102,18 +167,7 @@ def create(
     """
     if duckdb_client is None:
         duckdb_client = DuckdbClient()
-        skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
-        if not skip_s3:
-            s3end = os.getenv("AWS_S3_ENDPOINT")
-            if s3end:
-                duckdb_client.execute(
-                    f"CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto, ENDPOINT '{s3end}');"
-                )
-            else:
-                duckdb_client.execute(
-                    "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
-                )
-        duckdb_client.execute("SET parquet_metadata_cache = true;")
+        configure_duckdb_client(duckdb_client)
     if settings is None:
         settings = Settings(
             stac_fastapi_landing_id=os.getenv("STAC_FASTAPI_LANDING_ID", ""),

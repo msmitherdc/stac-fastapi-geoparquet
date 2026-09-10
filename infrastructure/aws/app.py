@@ -110,6 +110,10 @@ class StacFastApiGeoparquetStack(Stack):
             code=Code.from_docker_build(
                 path=os.path.abspath("../.."),
                 file="infrastructure/aws/lambda/Dockerfile",
+                # That Dockerfile also has a `runtime` stage for deploying as
+                # a container image; this stack wants the built asset, not the
+                # image, so it has to say which stage to stop at.
+                target_stage="build",
                 build_args={
                     "PYTHON_VERSION": runtime.to_string().replace("python", ""),
                 },

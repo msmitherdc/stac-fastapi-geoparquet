@@ -51,6 +51,37 @@ scripts/generate-collections s3://my-bucket/a.parquet s3://my-bucket/b.parquet
 
 This will update `./data/collections.json`.
 
+### Object storage and private CAs
+
+Reading geoparquet over HTTPS goes through three clients that are configured
+in three different ways, which is worth knowing before debugging a
+certificate or endpoint error:
+
+| Variable | Read by | Notes |
+| --- | --- | --- |
+| `AWS_S3_ENDPOINT` | DuckDB, obstore | A bare host. A scheme is stripped; `http://` turns TLS off. |
+| `AWS_ENDPOINT_URL` | boto3, obstore | Used as a fallback for the above, so one variable can serve both. |
+| `SSL_CERT_FILE` | boto3, obstore | Forwarded to DuckDB as `ca_cert_file` (see below). |
+| `AWS_S3_URL_STYLE` | DuckDB | `vhost` (default) or `path`. |
+| `STAC_FASTAPI_SKIP_S3_SECRET` | this app | Skip creating the S3 secret entirely. |
+
+DuckDB's HTTP layer is libcurl, which does **not** read `SSL_CERT_FILE`. A
+deployment behind a private CA can therefore point boto3 and obstore at its
+bundle and still see
+
+```
+RustacError: IO error: SSL peer certificate or ssh remote key was not ok
+```
+
+on the parquet request alone. `configure_duckdb_client` closes that gap by
+applying the same bundle with `SET ca_cert_file`, so a bundle written anywhere
+readable — including `/tmp` in a Lambda — is enough, with no need to bake
+certificates into the image. If the path doesn't exist it's ignored with a
+warning rather than leaving DuckDB unable to verify anything.
+
+To bake certificates in anyway, put them in [`certs/`](./certs) and build the
+`runtime` stage of the Lambda Dockerfile; see that directory's README.
+
 ### Access tags (optional)
 
 This fork ships an optional access-control layer, off by default in the
