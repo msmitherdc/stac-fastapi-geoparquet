@@ -68,11 +68,13 @@ def _duckdb_type_to_jsonschema(duckdb_type: str) -> dict[str, Any] | None:
     # Array types: e.g. "VARCHAR[]", "BIGINT[]"
     if upper.endswith("[]"):
         item_schema = _duckdb_type_to_jsonschema(upper[:-2])
+        if item_schema is None:
+            return None
         return {"type": "array", "items": item_schema}
 
-    # STRUCT/MAP – represent as JSON object (too complex to unroll inline)
+    # STRUCT/MAP – opaque to clients, so not worth advertising as queryable
     if upper.startswith("STRUCT") or upper.startswith("MAP"):
-        return {"type": "object"}
+        return None
 
     # Exact match
     if upper in _DUCKDB_TO_JSONSCHEMA:
