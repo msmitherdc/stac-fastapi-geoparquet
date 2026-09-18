@@ -1,6 +1,16 @@
 """Tests for the Filter extension's queryables endpoints."""
 
 from fastapi.testclient import TestClient
+from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+
+
+def test_conformance_classes(client: TestClient) -> None:
+    response = client.get("/conformance")
+    assert response.status_code == 200, response.text
+    conforms_to = response.json()["conformsTo"]
+    assert FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS in conforms_to
+    assert FieldsConformanceClasses.ITEMS in conforms_to
 
 
 def test_global_queryables(client: TestClient) -> None:

@@ -12,6 +12,8 @@ from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
 from stac_fastapi.types.errors import NotFoundError
 from starlette.requests import Request
 
+from .schema import STRUCTURAL_COLUMNS, describe_columns
+
 # ---------------------------------------------------------------------------
 # DuckDB type → JSON-Schema type mapping (AI written)
 # ---------------------------------------------------------------------------
@@ -51,7 +53,7 @@ _DUCKDB_TO_JSONSCHEMA: dict[str, dict[str, str]] = {
 }
 
 
-def _duckdb_type_to_jsonschema(duckdb_type: str) -> dict[str, Any]:
+def _duckdb_type_to_jsonschema(duckdb_type: str) -> dict[str, Any] | None:
     """Convert a DuckDB column type string to a JSON-Schema fragment."""
     upper = duckdb_type.upper().strip()
 
@@ -68,12 +70,8 @@ def _duckdb_type_to_jsonschema(duckdb_type: str) -> dict[str, Any]:
         item_schema = _duckdb_type_to_jsonschema(upper[:-2])
         return {"type": "array", "items": item_schema}
 
-    # STRUCT – represent as JSON object (too complex to unroll inline)
-    if upper.startswith("STRUCT"):
-        return {"type": "object"}
-
-    # MAP types
-    if upper.startswith("MAP"):
+    # STRUCT/MAP – represent as JSON object (too complex to unroll inline)
+    if upper.startswith("STRUCT") or upper.startswith("MAP"):
         return {"type": "object"}
 
     # Exact match
@@ -85,8 +83,7 @@ def _duckdb_type_to_jsonschema(duckdb_type: str) -> dict[str, Any]:
         if upper.startswith(prefix):
             return dict(schema)
 
-    # Fallback
-    return {}
+    return None
 
 
 # Fields that are standard STAC properties always present
@@ -115,20 +112,6 @@ _STAC_CORE_QUERYABLES: dict[str, dict[str, Any]] = {
     },
 }
 
-# Columns that are internal implementation details, not useful as queryables
-_SKIP_COLUMNS: frozenset[str] = frozenset(
-    {
-        "type",
-        "stac_version",
-        "stac_extensions",
-        "links",
-        "assets",
-        "providers",
-        "bbox",
-        "geometry",  # re-added via _STAC_CORE_QUERYABLES with a nicer description
-    }
-)
-
 
 def _extract_queryable_properties(
     describe_rows: list[tuple[Any, ...]],
@@ -145,12 +128,16 @@ def _extract_queryable_properties(
         if col_name in skip_columns:
             continue
 
-        schema_fragment = _duckdb_type_to_jsonschema(col_type)
+        schema_fragment: dict[str, Any]
         if col_name in known_queryables:
             # Prefer the curated title/description over anything inferred
             # from the DuckDB column type.
             schema_fragment = known_queryables[col_name].copy()
         else:
+            inferred = _duckdb_type_to_jsonschema(col_type)
+            if inferred is None:
+                continue
+            schema_fragment = inferred
             # Use title-cased column name as a human-readable title
             schema_fragment["title"] = (
                 col_name.replace(":", ": ").replace("_", " ").title()
@@ -173,7 +160,7 @@ class FiltersClient(BaseFiltersClient):
     """
 
     known_queryables: dict[str, dict[str, Any]] = _STAC_CORE_QUERYABLES
-    skip_columns: frozenset[str] = _SKIP_COLUMNS
+    skip_columns: frozenset[str] = STRUCTURAL_COLUMNS
 
     def get_queryables(
         self,
@@ -226,18 +213,7 @@ class FiltersClient(BaseFiltersClient):
         """Run DESCRIBE on the parquet file and return queryable properties."""
         client = cast(DuckdbClient, request.state.client)
         try:
-            safe_href = href.replace("'", "''")
-            arrow_table = client.query_to_table(
-                f"DESCRIBE SELECT * FROM read_parquet('{safe_href}') LIMIT 0"
-            )
-
-            # Convert these columns from the Arrow Table to Python lists.
-            column_names = arrow_table.column("column_name").to_pylist()
-            column_types = arrow_table.column("column_type").to_pylist()
-
-            # Zip the lists together
-            rows = list(zip(column_names, column_types))
-
+            rows = describe_columns(client, href)
             return _extract_queryable_properties(
                 rows, self.skip_columns, self.known_queryables
             )
