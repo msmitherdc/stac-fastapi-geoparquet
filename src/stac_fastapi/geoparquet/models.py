@@ -4,18 +4,18 @@ import attr
 import stac_fastapi.api.models
 from fastapi import Query
 from stac_fastapi.api.models import ItemCollectionUri
-from stac_fastapi.extensions.core import FilterExtension, FreeTextExtension
-from stac_fastapi.extensions.core.collection_search import CollectionSearchExtension
-from stac_fastapi.extensions.core.fields import (
+from stac_fastapi.extensions import FilterExtension, FreeTextExtension
+from stac_fastapi.extensions.collection_search import CollectionSearchExtension
+from stac_fastapi.extensions.fields import (
     FieldsConformanceClasses,
     FieldsExtension,
 )
-from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.core.pagination import OffsetPaginationExtension
-from stac_fastapi.extensions.core.query import QueryExtension
-from stac_fastapi.extensions.core.sort import SortExtension
+from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.filter.client import BaseFiltersClient
+from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.pagination import OffsetPaginationExtension
+from stac_fastapi.extensions.query import QueryExtension
+from stac_fastapi.extensions.sort import SortExtension
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.search import APIRequest, BaseSearchPostRequest
 from stac_pydantic.shared import BBox

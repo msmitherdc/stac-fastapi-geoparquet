@@ -28,7 +28,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from fastapi import HTTPException
-from rustac import DuckdbClient  # type: ignore[attr-defined]
+from rustac import DuckdbClient
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.types.stac import Collection, Item
 from starlette.requests import Request
