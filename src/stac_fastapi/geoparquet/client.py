@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from rustac import DuckdbClient  # type: ignore[attr-defined]
+from rustac import DuckdbClient
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest

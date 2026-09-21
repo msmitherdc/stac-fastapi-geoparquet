@@ -11,9 +11,9 @@ import pystac.utils
 from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
-from rustac import DuckdbClient  # type: ignore[attr-defined]
+from rustac import DuckdbClient
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.extensions.core.filter.client import BaseFiltersClient
+from stac_fastapi.extensions.filter.client import BaseFiltersClient
 from stac_fastapi.types.core import BaseCoreClient
 
 from .client import Client

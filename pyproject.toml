@@ -1,6 +1,6 @@
 [project]
 name = "stac-fastapi-geoparquet"
-version = "0.0.5"
+version = "0.0.7"
 description = "A stac-fastapi implementation with a stac-geoparquet backend"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -12,7 +12,7 @@ dependencies = [
     "obstore>=0.8.0",
     "pydantic>=2.10.4",
     "pystac>=1.13.0",
-    "rustac>=0.9.11",
+    "rustac>=0.9.17",
     "stac-fastapi-api>=5.0.2",
     "stac-fastapi-extensions>=5.0.2",
     "stac-fastapi-types>=5.0.2",
@@ -74,6 +74,7 @@ filterwarnings = [
     "ignore:Using extra keyword arguments on `Field` is deprecated and will be removed.:pydantic.warnings.PydanticDeprecatedSince20",
     "ignore::fastapi.exceptions.FastAPIDeprecationWarning",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff.lint]
