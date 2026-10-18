@@ -157,6 +157,13 @@ def test_non_matching_tag_404s_items(access_tag_client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_non_matching_tag_404s_queryables(access_tag_client: TestClient) -> None:
+    response = access_tag_client.get(
+        "/collections/naip/queryables", headers={"x-grid-accesstags": "[2]"}
+    )
+    assert response.status_code == 404
+
+
 def test_non_matching_tag_empty_search(access_tag_client: TestClient) -> None:
     headers = {"x-grid-accesstags": "[2]"}
     response = access_tag_client.get("/search", headers=headers)

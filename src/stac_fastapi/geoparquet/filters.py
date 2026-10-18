@@ -175,6 +175,14 @@ class FiltersClient(BaseFiltersClient):
     known_queryables: dict[str, dict[str, Any]] = _STAC_CORE_QUERYABLES
     skip_columns: frozenset[str] = _SKIP_COLUMNS
 
+    def visible_collections(self, request: Request) -> dict[str, Any]:
+        """Return the collections this request is allowed to see.
+
+        Mirrors :meth:`Client.visible_collections`, so a subclass that hides
+        collections there can hide their queryables too.
+        """
+        return cast(dict[str, Any], request.state.collections)
+
     def get_queryables(
         self,
         collection_id: str | None = None,
@@ -183,7 +191,7 @@ class FiltersClient(BaseFiltersClient):
         request: Request = kwargs["request"]
 
         hrefs: dict[str, str] = request.state.hrefs
-        collections: dict[str, Any] = request.state.collections
+        collections = self.visible_collections(request)
 
         base_url = str(request.base_url).rstrip("/")
 
