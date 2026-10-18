@@ -170,17 +170,22 @@ def apply_access_filter(search_dict: dict[str, Any], tags: list[int]) -> None:
         )
 
 
+def _visible_to(
+    collections: dict[str, Collection], tags: list[int]
+) -> dict[str, Collection]:
+    """Keep the collections whose access tag is in ``tags``."""
+    return {
+        collection_id: collection
+        for collection_id, collection in collections.items()
+        if collection.get(ACCESS_TAG_FIELD, DEFAULT_ACCESS_TAG) in tags
+    }
+
+
 class AccessTagClient(Client):
     """A :class:`Client` that honours the caller's access tags."""
 
     def visible_collections(self, request: Request) -> dict[str, Collection]:
-        tags = access_tags(request)
-        collections = super().visible_collections(request)
-        return {
-            collection_id: collection
-            for collection_id, collection in collections.items()
-            if collection.get(ACCESS_TAG_FIELD, DEFAULT_ACCESS_TAG) in tags
-        }
+        return _visible_to(super().visible_collections(request), access_tags(request))
 
     def search_collection(
         self,
@@ -245,10 +250,15 @@ class AccessTagClient(Client):
 
 
 class AccessTagFiltersClient(FiltersClient):
-    """Queryables that hide ``access_tag_id`` and describe the GRiD columns."""
+    """Queryables that honour access tags, hide ``access_tag_id``, and describe
+    the GRiD columns.
+    """
 
     known_queryables = {**_STAC_CORE_QUERYABLES, **GRID_QUERYABLES}
     skip_columns = FiltersClient.skip_columns | {ACCESS_TAG_FIELD}
+
+    def visible_collections(self, request: Request) -> dict[str, Any]:
+        return _visible_to(super().visible_collections(request), access_tags(request))
 
 
 def create(
