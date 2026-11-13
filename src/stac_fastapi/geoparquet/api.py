@@ -48,7 +48,7 @@ class State(TypedDict):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[State]:
-    client = app.extra["duckdb_client"]
+    client = app.state.duckdb_client
     s3end = os.getenv("AWS_S3_ENDPOINT")
     skip_s3 = os.getenv("STAC_FASTAPI_SKIP_S3_SECRET", "").lower() in ("1", "true")
     if not skip_s3:
@@ -60,8 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[State]:
             client.execute(
                 "CREATE OR REPLACE SECRET (TYPE S3, PROVIDER CREDENTIAL_CHAIN, REFRESH auto);"
             )
-    settings: Settings = app.extra["settings"]
-    collections = app.extra["collections"]
+    settings: Settings = app.state.settings
+    collections = app.state.collections
     collection_dict = dict()
     hrefs = dict()
     for collection in collections:
@@ -149,11 +149,13 @@ def create(
         openapi_url=settings.openapi_url,
         docs_url=None,  # Disabled so we can register our own custom endpoint below
         redoc_url=None,  # Set to None if you also want to customize/disable Redoc
-        settings=settings,
-        collections=collections,
-        duckdb_client=duckdb_client,
         redirect_slashes=False,
     )
+    # FastAPI no longer accepts arbitrary keyword arguments (``app.extra``), so
+    # hand these to :func:`lifespan` through ``app.state``.
+    app_instance.state.settings = settings
+    app_instance.state.collections = collections
+    app_instance.state.duckdb_client = duckdb_client
 
     # 2. Add the custom route to serve the swagger UI with local CDN alternatives
     @app_instance.get("/api.html", include_in_schema=False, name="swagger_ui_html")
