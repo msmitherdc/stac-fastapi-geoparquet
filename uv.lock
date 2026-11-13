@@ -2558,7 +2558,7 @@ wheels = [
 
 [[package]]
 name = "stac-fastapi-geoparquet"
-version = "0.0.7"
+version = "0.0.9"
 source = { editable = "." }
 dependencies = [
     { name = "arro3-core" },
