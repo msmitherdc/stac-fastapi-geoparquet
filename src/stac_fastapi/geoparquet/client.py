@@ -150,7 +150,14 @@ class Client(BaseCoreClient):
         columns) or post-process the returned items.
         """
         client = cast(DuckdbClient, request.state.client)
-        return cast(list[Item], client.search(href, **search_dict))
+        items = cast(list[Item], client.search(href, **search_dict))
+        for item in items:
+            # Some writers store assets as a JSON string so each item keeps
+            # only its own asset keys instead of the union struct; rustac
+            # returns that column as a plain string.
+            if isinstance(assets := item.get("assets"), str):
+                item["assets"] = json.loads(assets)
+        return items
 
     def all_collections(self, **kwargs: Any) -> Collections:
         request = kwargs.pop("request")
